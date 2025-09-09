@@ -1,0 +1,12 @@
+/runtime
+/.idea
+/.vscode
+/vendor
+*.log
+.env
+/tests/tmp
+/tests/.phpunit.result.cache
+.trae
+.vscode
+*/.DS_Store
+.DS_Store

@@ -1,0 +1,28 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use Nova\Support\Runtime;
+use Nova\Context\ContextStorage;
+
+$cmd = $argv[1] ?? 'help';
+
+switch ($cmd) {
+    case 'info':
+        echo "nova/facade\n";
+        echo "PHP: " . PHP_VERSION . "\n";
+        echo "SAPI: " . PHP_SAPI . "\n";
+        echo "Runtime: " . Runtime::getRuntime() . "\n";
+        echo "Context ID: " . ContextStorage::id() . "\n";
+        echo "Fibers: " . (Runtime::hasFibers() ? 'yes' : 'no') . "\n";
+        echo "OS: " . (Runtime::isWindows() ? 'Windows' : 'Unix-like') . "\n";
+        exit(0);
+    default:
+        echo "Usage: nova [info]\n";
+        exit(0);
+}
+
+
+
