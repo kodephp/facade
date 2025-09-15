@@ -1,12 +1,34 @@
-/runtime
-/.idea
-/.vscode
-/vendor
-*.log
-.env
-/tests/tmp
-/tests/.phpunit.result.cache
-.trae
-.vscode
-*/.DS_Store
+# Dependencies
+/vendor/
+
+# IDE
+/.idea/
+/.vscode/
+.trae/
+*/.cursor
+phpcs.xml
+
+# System
 .DS_Store
+Thumbs.db
+
+# Build
+/build/
+
+# Logs
+*.log
+
+# PHPUnit
+.phpunit.result.cache
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+phpcs.xml.dist
+phpunit.xml.dist
+phpunit.xml

@@ -1,41 +1,38 @@
 {
-  "name": "nova/facade",
-  "description": "Modern PHP 8.1+ facade library with multi-runtime awareness (Workerman/Swoole/Swow/Fiber) and Eloquent integration.",
-  "type": "library",
-  "license": "MIT",
-  "require": {
-    "php": "^8.1"
-  },
-  "require-dev": {
-    "phpunit/phpunit": "^10.0"
-  },
-  "autoload": {
-    "psr-4": {
-      "Nova\\": "src/"
+    "name": "kode/facade",
+    "type": "library",
+    "description": "A robust, universal Facade component for PHP 8.1+, compatible with Laravel, Symfony, ThinkPHP, Webman, and KodePHP.",
+    "keywords": ["facade", "proxy", "static", "container", "psr", "kodephp"],
+    "license": "Apache-2.0",
+    "authors": [
+        {
+            "name": "KodePHP Team"
+        }
+    ],
+    "require": {
+        "php": "^8.1",
+        "psr/container": "*"
     },
-    "files": [
-      "src/helpers.php"
-    ]
-  },
-  "suggest": {
-    "ext-swoole": "Enable coroutine-aware context.",
-    "ext-swow": "Enable coroutine-aware context.",
-    "workerman/workerman": "Run in Workerman servers.",
-    "illuminate/database": "Use Eloquent ORM."
-  },
-  "bin": [
-    "bin/nova"
-  ],
-  "scripts": {
-    "nova:info": "@php bin/nova info"
-  },
-  "config": {
-    "optimize-autoloader": true,
-    "sort-packages": true
-  },
-  "extra": {
-    "branch-alias": {
-      "dev-main": "1.x-dev"
-    }
-  }
+    "require-dev": {
+        "phpunit/phpunit": "^9.5",
+        "mockery/mockery": "^1.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Kode\\Facade\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Kode\\Facade\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "trea": ".trea.meta.php"
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
 }

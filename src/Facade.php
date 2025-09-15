@@ -1,98 +1,155 @@
 <?php
-declare(strict_types=1);
-namespace Nova;
 
-use Nova\Context\ContextStorage;
-use Nova\Contracts\ContainerInterface;
+declare(strict_types=1);
+
+namespace Kode\Facade;
+
+use Closure;
+use Kode\Facade\Exception\FacadeException;
+use Psr\Container\ContainerInterface;
+use ReflectionMethod;
 
 /**
- * Base Facade class providing static proxy to services resolved from Container.
- * - Context-aware: resolved instances are cached per coroutine/fiber/process via ContextStorage
- * - Safe fallback: works in CLI/FPM when advanced runtimes are absent
+ * Facade Abstract Class
+ *
+ * This class provides the static proxy functionality for services in the container.
+ *
+ * @method static mixed __callStatic(string $method, array $args)
  */
 abstract class Facade
 {
     /**
-     * Return the accessor (abstract ID or class name) to resolve from container.
+     * The resolved facade instances with method reflection cache
+     *
+     * @var array<string, array{object, array<string, ReflectionMethod>}>
      */
-    protected static function getFacadeAccessor(): string
-    {
-        throw new \RuntimeException('Facade accessor not defined.');
-    }
+    protected static array $resolvedInstances = [];
 
     /**
-     * Set the global container instance used by facades.
+     * Get the facade identifier
+     *
+     * @return string
      */
-    public static function setContainer(?ContainerInterface $container): void
-    {
-        Container::setInstance($container);
-    }
+    abstract protected static function id(): string;
 
     /**
-     * Get the global container instance used by facades.
+     * Get the instance of the facade
+     *
+     * @return object
+     * @throws FacadeException
      */
-    public static function getContainer(): ContainerInterface
+    public static function getInstance(): object
     {
-        return Container::getInstance();
-    }
-
-    /**
-     * Build the context key for current facade accessor.
-     */
-    protected static function resolvedKey(?string $accessor = null): string
-    {
-        $acc = $accessor ?? static::getFacadeAccessor();
-        return 'facade.resolved.' . $acc;
-    }
-
-    /**
-     * Resolve instance from container and cache in current context.
-     */
-    protected static function resolveInstance(): object
-    {
-        $accessor = static::getFacadeAccessor();
-
-        $key = static::resolvedKey($accessor);
-        $instance = ContextStorage::get($key);
-        if ($instance) {
-            return $instance;
+        $facade = static::class;
+        $id = static::id();
+        
+        // Return cached instance if exists
+        if (isset(static::$resolvedInstances[$facade])) {
+            return static::$resolvedInstances[$facade][0];
         }
-
-        $container = static::getContainer();
-        $instance = $container->make($accessor);
-        ContextStorage::set($key, $instance);
+        
+        // Get instance from proxy
+        $instance = FacadeProxy::getInstance($facade);
+        
+        // Initialize method reflections array
+        $methodReflections = [];
+        
+        // Store resolved instance with empty method reflections
+        static::$resolvedInstances[$facade] = [$instance, $methodReflections];
+        
         return $instance;
     }
 
     /**
-     * Forget the resolved instance for current facade (or a specific accessor) in current context only.
+     * Set the container instance
+     *
+     * @param ContainerInterface $container
+     * @return void
      */
-    public static function clearResolved(?string $accessor = null): void
+    public static function setContainer(ContainerInterface $container): void
     {
-        ContextStorage::delete(static::resolvedKey($accessor));
+        FacadeProxy::setContainer($container);
     }
 
     /**
-     * Forget all resolved facade instances in current context only.
+     * Clear the resolved instance
+     *
+     * @return void
      */
-    public static function clearResolvedAll(): void
+    public static function clear(): void
     {
-        ContextStorage::clearByPrefix('facade.resolved.');
+        unset(static::$resolvedInstances[static::class]);
+        FacadeProxy::clearInstances();
     }
 
     /**
-     * Proxy static calls to the resolved instance.
-     * @throws \BadMethodCallException when the target method does not exist
+     * Clear all resolved instances
+     *
+     * @return void
      */
-    public static function __callStatic(string $method, array $args): mixed
+    public static function clearAll(): void
     {
-        $instance = static::resolveInstance();
-        if (!method_exists($instance, $method)) {
-            throw new \BadMethodCallException(sprintf('%s::%s does not exist', static::class, $method));
+        static::$resolvedInstances = [];
+        FacadeProxy::clearAll();
+    }
+    
+    /**
+     * Get resolved instances for debugging
+     *
+     * @return array
+     */
+    public static function getResolvedInstances(): array
+    {
+        return static::$resolvedInstances;
+    }
+
+    /**
+     * Mock the facade with an instance or closure
+     *
+     * @param Closure|object $mock
+     * @return void
+     */
+    public static function mock(object $mock): void
+    {
+        FacadeProxy::mock(static::class, $mock);
+    }
+
+    /**
+     * Handle dynamic static calls
+     *
+     * @param string $method
+     * @param array $args
+     * @return mixed
+     * @throws FacadeException
+     */
+    public static function __callStatic(string $method, array $args)
+    {
+        $facade = static::class;
+        
+        // Ensure instance is resolved
+        if (!isset(static::$resolvedInstances[$facade])) {
+            static::getInstance();
         }
-        return $instance->$method(...$args);
+        
+        [$instance, $methodReflections] = static::$resolvedInstances[$facade];
+        
+        // Check if method reflection is cached
+        if (!isset($methodReflections[$method])) {
+            // Validate method exists
+            if (!method_exists($instance, $method)) {
+                throw FacadeException::undefinedMethod($facade, $method);
+            }
+            
+            // Cache method reflection
+            $methodReflections[$method] = new ReflectionMethod($instance, $method);
+            static::$resolvedInstances[$facade][1] = $methodReflections;
+        }
+        
+        // Invoke method with arguments
+        try {
+            return $methodReflections[$method]->invokeArgs($instance, $args);
+        } catch (\ReflectionException $e) {
+            throw new FacadeException("Error invoking method {$method} on facade {$facade}: " . $e->getMessage(), 0, $e);
+        }
     }
 }
-
-
-
