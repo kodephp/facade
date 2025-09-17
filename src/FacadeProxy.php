@@ -152,6 +152,38 @@ class FacadeProxy
     }
 
     /**
+     * Check if a facade is bound to a service ID
+     *
+     * @param string $facade
+     * @return bool
+     */
+    public static function isBound(string $facade): bool
+    {
+        return isset(static::$ids[$facade]);
+    }
+
+    /**
+     * Get the service ID for a facade
+     *
+     * @param string $facade
+     * @return string|null
+     */
+    public static function getServiceId(string $facade): ?string
+    {
+        return static::$ids[$facade] ?? null;
+    }
+
+    /**
+     * Get all bound facades
+     *
+     * @return array<string, string>
+     */
+    public static function getBindings(): array
+    {
+        return static::$ids;
+    }
+
+    /**
      * Clear all mocks
      *
      * @return void

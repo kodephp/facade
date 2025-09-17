@@ -11,6 +11,8 @@ use Kode\Facade\Facade;
  *
  * @method static bool send(string $to, string $subject, string $body)
  * @method static string getDriver()
+ * 
+ * @see \Examples\Mail\MailerInterface
  */
 class MailFacade extends Facade
 {

@@ -115,6 +115,55 @@ abstract class Facade
     }
 
     /**
+     * Check if the facade has been resolved
+     *
+     * @return bool
+     */
+    public static function isResolved(): bool
+    {
+        return isset(static::$resolvedInstances[static::class]);
+    }
+
+    /**
+     * Get the service ID for this facade
+     *
+     * @return string
+     */
+    public static function getServiceId(): string
+    {
+        return static::id();
+    }
+
+    /**
+     * Call a method on the facade instance with an array of arguments
+     *
+     * @param string $method
+     * @param array $args
+     * @return mixed
+     * @throws FacadeException
+     */
+    public static function call(string $method, array $args = [])
+    {
+        return static::__callStatic($method, $args);
+    }
+
+    /**
+     * Check if a method exists on the facade instance
+     *
+     * @param string $method
+     * @return bool
+     */
+    public static function hasMethod(string $method): bool
+    {
+        try {
+            $instance = static::getInstance();
+            return method_exists($instance, $method);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
      * Handle dynamic static calls
      *
      * @param string $method

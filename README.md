@@ -78,6 +78,33 @@ abstract class Facade
     public static function clear(): void;
 
     /**
+     * 检查门面是否已解析
+     * @return bool
+     */
+    public static function isResolved(): bool;
+
+    /**
+     * 获取此门面的服务ID
+     * @return string
+     */
+    public static function getServiceId(): string;
+
+    /**
+     * 使用参数数组调用门面实例上的方法
+     * @param string $method
+     * @param array $args
+     * @return mixed
+     */
+    public static function call(string $method, array $args = []);
+
+    /**
+     * 检查门面实例上是否存在指定方法
+     * @param string $method
+     * @return bool
+     */
+    public static function hasMethod(string $method): bool;
+
+    /**
      * 动态静态调用转发
      * @param string $method
      * @param array $args
@@ -97,7 +124,7 @@ abstract class Facade
 namespace Kode\Facade;
 
 class FacadeProxy
-```{
+{
     private static array $instances = [];
     private static array $ids = [];
 
@@ -109,6 +136,26 @@ class FacadeProxy
      * @return void
      */
     public static function bind(string $facade, string $serviceId): void;
+
+    /**
+     * 检查门面是否绑定到服务ID
+     * @param string $facade
+     * @return bool
+     */
+    public static function isBound(string $facade): bool;
+
+    /**
+     * 获取门面的服务ID
+     * @param string $facade
+     * @return string|null
+     */
+    public static function getServiceId(string $facade): ?string;
+
+    /**
+     * 获取所有绑定的门面
+     * @return array<string, string>
+     */
+    public static function getBindings(): array;
 
     /**
      * 获取 Facade 对应的实例
@@ -186,6 +233,55 @@ Mail::setContainer($container);
 
 // 使用静态调用
 Mail::send('user@example.com', 'Hello', 'Welcome!');
+```
+
+---
+
+## 🧩 增强功能
+
+### ✅ 门面状态检查
+
+现在可以检查门面是否已解析以及是否绑定到服务：
+
+```php
+// 检查门面是否已解析
+if (Mail::isResolved()) {
+    // 门面已解析
+}
+
+// 检查门面是否绑定到服务ID
+if (FacadeProxy::isBound(\App\Facade\Mail::class)) {
+    // 门面已绑定
+}
+```
+
+### ✅ 获取门面信息
+
+可以获取门面的服务ID和所有绑定信息：
+
+```php
+// 获取门面的服务ID
+$serviceId = Mail::getServiceId();
+
+// 获取门面的服务ID（通过代理）
+$serviceId = FacadeProxy::getServiceId(\App\Facade\Mail::class);
+
+// 获取所有绑定的门面
+$bindings = FacadeProxy::getBindings();
+```
+
+### ✅ 方法调用增强
+
+提供了更灵活的方法调用方式：
+
+```php
+// 使用call方法调用，参数以数组形式传递
+$result = Mail::call('send', ['user@example.com', 'Subject', 'Body']);
+
+// 检查门面实例上是否存在指定方法
+if (Mail::hasMethod('send')) {
+    // 方法存在
+}
 ```
 
 ---

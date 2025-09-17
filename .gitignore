@@ -22,13 +22,7 @@ Thumbs.db
 .phpunit.result.cache
 
 # OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
 .Trashes
-ehthumbs.db
-Thumbs.db
 phpcs.xml.dist
 phpunit.xml.dist
 phpunit.xml
