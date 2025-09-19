@@ -4,8 +4,66 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "f74d509b08ac29e7e84d6aef1686e23c",
+    "content-hash": "6faa94a299b927c0b1cf560283b941d9",
     "packages": [
+        {
+            "name": "kode/context",
+            "version": "1.1.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/kodephp/context.git",
+                "reference": "4e804857dc8fd76bfa218c55f18fa4f9f0f4feba"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/kodephp/context/zipball/4e804857dc8fd76bfa218c55f18fa4f9f0f4feba",
+                "reference": "4e804857dc8fd76bfa218c55f18fa4f9f0f4feba",
+                "shasum": ""
+            },
+            "require": {
+                "php": "^8.1"
+            },
+            "require-dev": {
+                "phpstan/phpstan": "^1.0",
+                "phpunit/phpunit": "^9.0"
+            },
+            "type": "library",
+            "extra": {
+                "branch-alias": {
+                    "dev-master": "1.1.x-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Kode\\Context\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "Apache-2.0"
+            ],
+            "authors": [
+                {
+                    "name": "Kode Team",
+                    "email": "team@kodephp.com"
+                }
+            ],
+            "description": "A lightweight, high-performance context management library for PHP coroutine/fiber environments",
+            "homepage": "https://github.com/kodephp/context",
+            "keywords": [
+                "Context",
+                "coroutine",
+                "fiber",
+                "request-context",
+                "swoole",
+                "swow"
+            ],
+            "support": {
+                "issues": "https://github.com/kodephp/context/issues",
+                "source": "https://github.com/kodephp/context"
+            },
+            "time": "2025-09-19T03:13:47+00:00"
+        },
         {
             "name": "psr/container",
             "version": "2.0.2",

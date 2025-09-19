@@ -284,6 +284,34 @@ if (Mail::hasMethod('send')) {
 }
 ```
 
+### ✅ 上下文安全模式（Context-Safe Mode）
+
+在协程环境（如Swoole、Swow、PHP 8.1+ Fiber）中，可以启用上下文安全模式以确保门面实例在不同协程间隔离：
+
+```php
+// 启用上下文安全模式
+Mail::enableContextSafeMode();
+
+// 现在每个协程将拥有独立的门面实例缓存
+// 避免不同协程间的实例污染问题
+```
+
+上下文安全模式特性：
+- ✅ 每个协程/上下文拥有独立的实例缓存
+- ✅ 支持PHP Fiber、Swoole、Swow等协程环境
+- ✅ 与原有API完全兼容
+- ✅ 可随时启用或禁用
+
+```php
+// 检查是否启用了上下文安全模式
+if (Mail::isContextSafeMode()) {
+    // 上下文安全模式已启用
+}
+
+// 禁用上下文安全模式
+Mail::disableContextSafeMode();
+```
+
 ---
 
 ## 🧩 高级特性

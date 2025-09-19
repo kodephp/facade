@@ -1,10 +1,11 @@
 # Dependencies
 /vendor/
+composer.lock
 
 # IDE
 /.idea/
 /.vscode/
-.trae/
+.trae
 */.cursor
 phpcs.xml
 

@@ -109,11 +109,6 @@ class FacadeProxy
             return $mock;
         }
 
-        // Return cached instance if exists
-        if (isset(static::$instances[$facade])) {
-            return static::$instances[$facade];
-        }
-
         // Check if facade is bound
         if (!isset(static::$ids[$facade])) {
             throw FacadeException::unknownFacade($facade);
@@ -137,8 +132,13 @@ class FacadeProxy
             throw new FacadeException("Resolved instance for {$facade} is not an object");
         }
 
-        // Cache the instance
-        return static::$instances[$facade] = $instance;
+        // Cache the instance only if not in context-safe mode
+        // In context-safe mode, caching is handled by ContextualFacadeManager
+        if (!static::isContextSafeMode($facade)) {
+            static::$instances[$facade] = $instance;
+        }
+        
+        return $instance;
     }
 
     /**
@@ -213,5 +213,27 @@ class FacadeProxy
         static::clearInstances();
         static::clearMocks();
         static::clearBindings();
+    }
+    
+    /**
+     * Check if the facade is in context-safe mode
+     *
+     * @param string $facade
+     * @return bool
+     */
+    protected static function isContextSafeMode(string $facade): bool
+    {
+        // Check if the facade class has contextSafe property and it's enabled
+        if (class_exists($facade) && property_exists($facade, 'contextSafe')) {
+            // Use static property access instead of creating instance
+            $reflection = new \ReflectionClass($facade);
+            $property = $reflection->getProperty('contextSafe');
+            $property->setAccessible(true);
+            
+            // For static properties, we don't need an instance
+            return $property->getValue(null);
+        }
+        
+        return false;
     }
 }
