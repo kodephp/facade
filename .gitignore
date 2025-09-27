@@ -13,9 +13,6 @@ phpcs.xml
 .DS_Store
 Thumbs.db
 
-# Build
-/build/
-
 # Logs
 *.log
 
