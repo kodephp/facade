@@ -1,12 +1,14 @@
 {
     "name": "kode/facade",
+    "version": "1.2.2",
     "type": "library",
-    "description": "A robust, universal Facade component for PHP 8.1+, compatible with Laravel, Symfony, ThinkPHP, Webman, and KodePHP.",
+    "description": "适用于 PHP 8.1+ 的健壮、通用 Facade 组件，兼容 Laravel、Symfony、ThinkPHP、Webman 和 KodePHP。",
     "keywords": ["facade", "proxy", "static", "container", "psr", "kodephp"],
     "license": "Apache-2.0",
     "authors": [
         {
-            "name": "KodePHP Team"
+            "name": "半本正经",
+            "email": "382601296@qq.com"
         }
     ],
     "require": {

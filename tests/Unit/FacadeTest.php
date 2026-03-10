@@ -22,6 +22,11 @@ class TestService
     {
         return 'test-value';
     }
+
+    protected function protectedValue(): string
+    {
+        return 'hidden';
+    }
 }
 
 class FacadeTest extends TestCase
@@ -135,6 +140,64 @@ class FacadeTest extends TestCase
         // Assert the results
         $this->assertEquals('test-value', $result1);
         $this->assertEquals('test-value', $result2);
+    }
+
+    public function testFacadeProxyCachesResolvedInstance(): void
+    {
+        $testInstance = new TestService();
+        $container = $this->createMock(ContainerInterface::class);
+
+        $container->expects($this->once())
+            ->method('has')
+            ->with('test-service')
+            ->willReturn(true);
+
+        $container->expects($this->once())
+            ->method('get')
+            ->with('test-service')
+            ->willReturn($testInstance);
+
+        TestFacade::setContainer($container);
+        FacadeProxy::bind(TestFacade::class, 'test-service');
+
+        $first = TestFacade::getInstance();
+        $second = TestFacade::getInstance();
+
+        $this->assertSame($first, $second);
+    }
+
+    public function testHasMethodChecksPublicOnly(): void
+    {
+        $testInstance = new TestService();
+        $container = $this->createMock(ContainerInterface::class);
+
+        $container->expects($this->once())
+            ->method('has')
+            ->with('test-service')
+            ->willReturn(true);
+
+        $container->expects($this->once())
+            ->method('get')
+            ->with('test-service')
+            ->willReturn($testInstance);
+
+        TestFacade::setContainer($container);
+        FacadeProxy::bind(TestFacade::class, 'test-service');
+
+        $this->assertTrue(TestFacade::hasMethod('getValue'));
+        $this->assertFalse(TestFacade::hasMethod('protectedValue'));
+    }
+
+    public function testFacadeCanUseClosureMock(): void
+    {
+        FacadeProxy::mock(TestFacade::class, static fn () => new class {
+            public function getValue(): string
+            {
+                return 'mocked';
+            }
+        });
+
+        $this->assertSame('mocked', TestFacade::getValue());
     }
 }
 

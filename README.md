@@ -1,7 +1,7 @@
 # KodePHP Facade Component
 
 > **Package Name:** `kode/facade`  
-> **Version:** 1.0.0 (Stable)  
+> **Version:** 1.2.2 (Stable)  
 > **PHP Version:** >=8.1  
 > **Author:** KodePHP Team  
 > **License:** Apache-2.0  

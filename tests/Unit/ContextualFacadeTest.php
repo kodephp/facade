@@ -8,6 +8,7 @@ use Kode\Context\Context;
 use Kode\Facade\ContextualFacadeManager;
 use Kode\Facade\Facade;
 use Kode\Facade\FacadeProxy;
+use Kode\Facade\Exception\FacadeException;
 use PHPUnit\Framework\TestCase;
 use Psr\Container\ContainerInterface;
 
@@ -246,5 +247,38 @@ class ContextualFacadeTest extends TestCase
         $instance = ContextualFacadeManager::getInstance(ContextualTestFacade::class);
         $this->assertInstanceOf(ContextualTestService::class, $instance);
         $this->assertEquals('manager_test', $instance->getValue());
+    }
+
+    public function testContextualFacadeManagerThrowsWhenServiceMissing(): void
+    {
+        ContextualFacadeManager::setContainer($this->container);
+
+        $this->expectException(FacadeException::class);
+        $this->expectExceptionMessage('No resolved instance for facade: ' . ContextualTestFacade::class);
+
+        ContextualFacadeManager::getInstance(ContextualTestFacade::class);
+    }
+
+    public function testContextualFacadeManagerThrowsWhenServiceNotObject(): void
+    {
+        $invalidContainer = new class implements ContainerInterface {
+            public function get(string $id)
+            {
+                return 'invalid';
+            }
+
+            public function has(string $id): bool
+            {
+                return true;
+            }
+        };
+
+        ContextualFacadeManager::setContainer($invalidContainer);
+        Context::clear();
+
+        $this->expectException(FacadeException::class);
+        $this->expectExceptionMessage('Resolved instance for ' . ContextualTestFacade::class . ' is not an object');
+
+        ContextualFacadeManager::getInstance(ContextualTestFacade::class);
     }
 }

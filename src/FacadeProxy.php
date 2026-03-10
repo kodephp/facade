@@ -109,6 +109,10 @@ class FacadeProxy
             return $mock;
         }
 
+        if (!static::isContextSafeMode($facade) && isset(static::$instances[$facade])) {
+            return static::$instances[$facade];
+        }
+
         // Check if facade is bound
         if (!isset(static::$ids[$facade])) {
             throw FacadeException::unknownFacade($facade);

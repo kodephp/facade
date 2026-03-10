@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Facade;
 
 use Kode\Context\Context;
+use Kode\Facade\Exception\FacadeException;
 use Psr\Container\ContainerInterface;
 
 /**
@@ -66,11 +67,30 @@ class ContextualFacadeManager
         
         // 如果当前上下文没有缓存该实例，则从容器获取并缓存
         if (!isset($instances[$serviceId])) {
-            $instances[$serviceId] = self::getContainer()->get($serviceId);
+            $container = self::getContainer();
+
+            if (!$container->has($serviceId)) {
+                throw FacadeException::noResolvedInstance($facadeClass);
+            }
+
+            $instance = $container->get($serviceId);
+            if (!is_object($instance)) {
+                throw new FacadeException("Resolved instance for {$facadeClass} is not an object");
+            }
+
+            $instances[$serviceId] = $instance;
             self::setContextInstances($instances, $facadeClass);
         }
 
         return $instances[$serviceId];
+    }
+
+    public static function hasInstance(string $facadeClass): bool
+    {
+        $instances = self::getContextInstances($facadeClass);
+        $serviceId = $facadeClass::getServiceId();
+
+        return isset($instances[$serviceId]);
     }
 
     /**

@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Kode\Facade;
 
-use Closure;
 use Kode\Context\Context;
 use Kode\Facade\Exception\FacadeException;
 use Psr\Container\ContainerInterface;
 use ReflectionMethod;
+use Throwable;
 
 /**
  * Facade Abstract Class
@@ -54,7 +54,6 @@ abstract class Facade
         }
         
         $facade = static::class;
-        $id = static::id();
         
         // Return cached instance if exists
         if (isset(static::$resolvedInstances[$facade])) {
@@ -134,7 +133,7 @@ abstract class Facade
     /**
      * Mock the facade with an instance or closure
      *
-     * @param Closure|object $mock
+     * @param \Closure|object $mock
      * @return void
      */
     public static function mock(object $mock): void
@@ -150,14 +149,7 @@ abstract class Facade
     public static function isResolved(): bool
     {
         if (static::$contextSafe) {
-            // In context-safe mode, we check if the instance exists in current context
-            // This is a simplified check - in reality, we might need a more sophisticated approach
-            try {
-                static::getInstance();
-                return true;
-            } catch (\Throwable $e) {
-                return false;
-            }
+            return ContextualFacadeManager::hasInstance(static::class);
         }
         
         return isset(static::$resolvedInstances[static::class]);
@@ -196,7 +188,8 @@ abstract class Facade
     {
         try {
             $instance = static::getInstance();
-            return method_exists($instance, $method);
+            $methodReflection = new ReflectionMethod($instance, $method);
+            return $methodReflection->isPublic();
         } catch (\Throwable $e) {
             return false;
         }
@@ -243,51 +236,43 @@ abstract class Facade
     public static function __callStatic(string $method, array $args)
     {
         $facade = static::class;
-        
-        // If not in context-safe mode, use the original implementation
-        if (!static::$contextSafe) {
-            // Ensure instance is resolved
-            if (!isset(static::$resolvedInstances[$facade])) {
-                static::getInstance();
-            }
-            
-            [$instance, $methodReflections] = static::$resolvedInstances[$facade];
-            
-            // Check if method reflection is cached
-            if (!isset($methodReflections[$method])) {
-                // Validate method exists
-                if (!method_exists($instance, $method)) {
-                    throw FacadeException::undefinedMethod($facade, $method);
-                }
-                
-                // Cache method reflection
-                $methodReflections[$method] = new ReflectionMethod($instance, $method);
-                static::$resolvedInstances[$facade][1] = $methodReflections;
-            }
-            
-            // Invoke method with arguments
-            try {
-                return $methodReflections[$method]->invokeArgs($instance, $args);
-            } catch (\ReflectionException $e) {
-                throw new FacadeException("Error invoking method {$method} on facade {$facade}: " . $e->getMessage(), 0, $e);
-            }
-        }
-        
-        // In context-safe mode, get fresh instance and call method directly
+
         $instance = static::getInstance();
-        
-        // Validate method exists
-        if (!method_exists($instance, $method)) {
+
+        if (!static::$contextSafe) {
+            if (!isset(static::$resolvedInstances[$facade])) {
+                static::$resolvedInstances[$facade] = [$instance, []];
+            }
+
+            $methodReflections = static::$resolvedInstances[$facade][1];
+            if (isset($methodReflections[$method])) {
+                return static::invokeMethod($facade, $method, $methodReflections[$method], $instance, $args);
+            }
+
+            $methodReflection = new ReflectionMethod($instance, $method);
+            static::$resolvedInstances[$facade][1][$method] = $methodReflection;
+
+            return static::invokeMethod($facade, $method, $methodReflection, $instance, $args);
+        }
+
+        $methodReflection = new ReflectionMethod($instance, $method);
+        return static::invokeMethod($facade, $method, $methodReflection, $instance, $args);
+    }
+
+    private static function invokeMethod(
+        string $facade,
+        string $method,
+        ReflectionMethod $methodReflection,
+        object $instance,
+        array $args
+    ) {
+        if (!$methodReflection->isPublic()) {
             throw FacadeException::undefinedMethod($facade, $method);
         }
-        
-        // Create reflection method (could be cached in future)
-        $methodReflection = new ReflectionMethod($instance, $method);
-        
-        // Invoke method with arguments
+
         try {
             return $methodReflection->invokeArgs($instance, $args);
-        } catch (\ReflectionException $e) {
+        } catch (Throwable $e) {
             throw new FacadeException("Error invoking method {$method} on facade {$facade}: " . $e->getMessage(), 0, $e);
         }
     }
