@@ -1,6 +1,6 @@
 {
     "name": "kode/facade",
-    "version": "1.2.2",
+    "version": "1.2.3",
     "type": "library",
     "description": "适用于 PHP 8.1+ 的健壮、通用 Facade 组件，兼容 Laravel、Symfony、ThinkPHP、Webman 和 KodePHP。",
     "keywords": ["facade", "proxy", "static", "container", "psr", "kodephp"],
@@ -29,9 +29,6 @@
         "psr-4": {
             "Kode\\Facade\\Tests\\": "tests/"
         }
-    },
-    "extra": {
-        "trea": ".trea.meta.php"
     },
     "scripts": {
         "test": "phpunit"
