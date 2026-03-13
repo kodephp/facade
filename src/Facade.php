@@ -11,99 +11,94 @@ use ReflectionMethod;
 use Throwable;
 
 /**
- * Facade Abstract Class
+ * 门面抽象基类
  *
- * This class provides the static proxy functionality for services in the container.
+ * 提供静态代理功能，将静态方法调用转发到服务容器中的实际服务实例。
+ * 支持上下文安全模式，确保在协程环境下实例隔离。
+ *
+ * @package Kode\Facade
+ * @author  KodePHP <382601296@qq.com>
+ * @license Apache-2.0
  *
  * @method static mixed __callStatic(string $method, array $args)
  */
 abstract class Facade
 {
     /**
-     * The resolved facade instances with method reflection cache
+     * 已解析的门面实例缓存（包含方法反射缓存）
      *
-     * @var array<string, array{object, array<string, ReflectionMethod>}>
+     * @var array<class-string, array{0: object, 1: array<string, ReflectionMethod>}>
      */
     protected static array $resolvedInstances = [];
 
     /**
-     * Whether to use context-safe mode
-     *
-     * @var bool
+     * 上下文安全模式开关
      */
     protected static bool $contextSafe = false;
 
     /**
-     * Get the facade identifier
+     * 获取门面对应的服务标识
      *
-     * @return string
+     * 子类必须实现此方法，返回服务容器中的服务ID。
+     *
+     * @return string 服务容器中的服务ID
      */
     abstract protected static function id(): string;
 
     /**
-     * Get the instance of the facade
+     * 获取门面实例
      *
-     * @return object
+     * 根据上下文安全模式从不同来源获取实例。
+     *
+     * @return object 服务实例
      * @throws FacadeException
      */
     public static function getInstance(): object
     {
-        // If context-safe mode is enabled, use ContextualFacadeManager
         if (static::$contextSafe) {
             return ContextualFacadeManager::getInstance(static::class);
         }
-        
+
         $facade = static::class;
-        
-        // Return cached instance if exists
+
         if (isset(static::$resolvedInstances[$facade])) {
             return static::$resolvedInstances[$facade][0];
         }
-        
-        // Get instance from proxy
+
         $instance = FacadeProxy::getInstance($facade);
-        
-        // Initialize method reflections array
-        $methodReflections = [];
-        
-        // Store resolved instance with empty method reflections
-        static::$resolvedInstances[$facade] = [$instance, $methodReflections];
-        
+        static::$resolvedInstances[$facade] = [$instance, []];
+
         return $instance;
     }
 
     /**
-     * Set the container instance
+     * 设置服务容器
      *
-     * @param ContainerInterface $container
-     * @return void
+     * 同时设置到代理管理器和上下文管理器，确保向后兼容。
+     *
+     * @param ContainerInterface $container PSR-11 容器实例
      */
     public static function setContainer(ContainerInterface $container): void
     {
-        // Set container in both proxy and context manager for backward compatibility
         FacadeProxy::setContainer($container);
         ContextualFacadeManager::setContainer($container);
     }
 
     /**
-     * Clear the resolved instance
-     *
-     * @return void
+     * 清除当前门面的缓存实例
      */
     public static function clear(): void
     {
         if (static::$contextSafe) {
-            ContextualFacadeManager::clearInstances();
+            ContextualFacadeManager::clearInstance(static::class);
         } else {
             unset(static::$resolvedInstances[static::class]);
-            FacadeProxy::clearInstances();
+            FacadeProxy::clearInstance(static::class);
         }
     }
 
     /**
-     * Clear all resolved instances
-     *
-     * @return void
+     * 清除所有门面的缓存实例
      */
     public static function clearAll(): void
     {
@@ -111,30 +106,26 @@ abstract class Facade
             Context::clear();
         } else {
             static::$resolvedInstances = [];
-            FacadeProxy::clearAll();
+            FacadeProxy::clearInstances();
         }
     }
-    
+
     /**
-     * Get resolved instances for debugging
+     * 获取已解析的实例列表（用于调试）
      *
-     * @return array
+     * @return array<class-string, array{0: object, 1: array<string, ReflectionMethod>}>
      */
     public static function getResolvedInstances(): array
     {
-        if (static::$contextSafe) {
-            // In context-safe mode, we don't have a global cache to return
-            return [];
-        }
-        
         return static::$resolvedInstances;
     }
 
     /**
-     * Mock the facade with an instance or closure
+     * 模拟门面实例
      *
-     * @param \Closure|object $mock
-     * @return void
+     * 用于测试场景，替换门面的实际实例。
+     *
+     * @param object $mock 模拟实例
      */
     public static function mock(object $mock): void
     {
@@ -142,7 +133,7 @@ abstract class Facade
     }
 
     /**
-     * Check if the facade has been resolved
+     * 检查门面是否已解析
      *
      * @return bool
      */
@@ -151,12 +142,12 @@ abstract class Facade
         if (static::$contextSafe) {
             return ContextualFacadeManager::hasInstance(static::class);
         }
-        
-        return isset(static::$resolvedInstances[static::class]);
+
+        return isset(static::$resolvedInstances[static::class]) || FacadeProxy::hasInstance(static::class);
     }
 
     /**
-     * Get the service ID for this facade
+     * 获取门面的服务ID
      *
      * @return string
      */
@@ -166,39 +157,39 @@ abstract class Facade
     }
 
     /**
-     * Call a method on the facade instance with an array of arguments
+     * 使用参数数组调用门面方法
      *
-     * @param string $method
-     * @param array $args
+     * @param string $method 方法名
+     * @param array  $args   参数数组
      * @return mixed
      * @throws FacadeException
      */
-    public static function call(string $method, array $args = [])
+    public static function call(string $method, array $args = []): mixed
     {
         return static::__callStatic($method, $args);
     }
 
     /**
-     * Check if a method exists on the facade instance
+     * 检查门面实例上是否存在指定方法
      *
-     * @param string $method
+     * @param string $method 方法名
      * @return bool
      */
     public static function hasMethod(string $method): bool
     {
         try {
             $instance = static::getInstance();
-            $methodReflection = new ReflectionMethod($instance, $method);
-            return $methodReflection->isPublic();
-        } catch (\Throwable $e) {
+            $reflection = new ReflectionMethod($instance, $method);
+            return $reflection->isPublic();
+        } catch (Throwable) {
             return false;
         }
     }
 
     /**
-     * Enable context-safe mode
+     * 启用上下文安全模式
      *
-     * @return void
+     * 在协程环境下，每个协程将拥有独立的实例缓存。
      */
     public static function enableContextSafeMode(): void
     {
@@ -206,9 +197,7 @@ abstract class Facade
     }
 
     /**
-     * Disable context-safe mode
-     *
-     * @return void
+     * 禁用上下文安全模式
      */
     public static function disableContextSafeMode(): void
     {
@@ -216,7 +205,7 @@ abstract class Facade
     }
 
     /**
-     * Check if context-safe mode is enabled
+     * 检查是否启用了上下文安全模式
      *
      * @return bool
      */
@@ -226,54 +215,97 @@ abstract class Facade
     }
 
     /**
-     * Handle dynamic static calls
+     * 处理动态静态方法调用
      *
-     * @param string $method
-     * @param array $args
+     * 将静态调用转发到实际的服务实例。
+     *
+     * @param string $method 方法名
+     * @param array  $args   参数数组
      * @return mixed
      * @throws FacadeException
      */
-    public static function __callStatic(string $method, array $args)
+    public static function __callStatic(string $method, array $args): mixed
     {
         $facade = static::class;
-
         $instance = static::getInstance();
 
         if (!static::$contextSafe) {
-            if (!isset(static::$resolvedInstances[$facade])) {
-                static::$resolvedInstances[$facade] = [$instance, []];
-            }
-
-            $methodReflections = static::$resolvedInstances[$facade][1];
-            if (isset($methodReflections[$method])) {
-                return static::invokeMethod($facade, $method, $methodReflections[$method], $instance, $args);
-            }
-
-            $methodReflection = new ReflectionMethod($instance, $method);
-            static::$resolvedInstances[$facade][1][$method] = $methodReflection;
-
-            return static::invokeMethod($facade, $method, $methodReflection, $instance, $args);
+            return static::invokeWithCache($facade, $method, $instance, $args);
         }
 
-        $methodReflection = new ReflectionMethod($instance, $method);
-        return static::invokeMethod($facade, $method, $methodReflection, $instance, $args);
+        return static::invokeWithoutCache($facade, $method, $instance, $args);
     }
 
+    /**
+     * 使用缓存调用方法
+     *
+     * @param string $facade  门面类名
+     * @param string $method  方法名
+     * @param object $instance 服务实例
+     * @param array  $args    参数数组
+     * @return mixed
+     * @throws FacadeException
+     */
+    private static function invokeWithCache(string $facade, string $method, object $instance, array $args): mixed
+    {
+        if (!isset(static::$resolvedInstances[$facade])) {
+            static::$resolvedInstances[$facade] = [$instance, []];
+        }
+
+        $methodReflections = static::$resolvedInstances[$facade][1];
+
+        if (isset($methodReflections[$method])) {
+            return static::invokeMethod($facade, $method, $methodReflections[$method], $instance, $args);
+        }
+
+        $reflection = new ReflectionMethod($instance, $method);
+        static::$resolvedInstances[$facade][1][$method] = $reflection;
+
+        return static::invokeMethod($facade, $method, $reflection, $instance, $args);
+    }
+
+    /**
+     * 不使用缓存调用方法（上下文安全模式）
+     *
+     * @param string $facade   门面类名
+     * @param string $method   方法名
+     * @param object $instance 服务实例
+     * @param array  $args     参数数组
+     * @return mixed
+     * @throws FacadeException
+     */
+    private static function invokeWithoutCache(string $facade, string $method, object $instance, array $args): mixed
+    {
+        $reflection = new ReflectionMethod($instance, $method);
+        return static::invokeMethod($facade, $method, $reflection, $instance, $args);
+    }
+
+    /**
+     * 执行方法调用
+     *
+     * @param string           $facade    门面类名
+     * @param string           $method    方法名
+     * @param ReflectionMethod $reflection 方法反射
+     * @param object           $instance  服务实例
+     * @param array            $args      参数数组
+     * @return mixed
+     * @throws FacadeException
+     */
     private static function invokeMethod(
         string $facade,
         string $method,
-        ReflectionMethod $methodReflection,
+        ReflectionMethod $reflection,
         object $instance,
         array $args
-    ) {
-        if (!$methodReflection->isPublic()) {
+    ): mixed {
+        if (!$reflection->isPublic()) {
             throw FacadeException::undefinedMethod($facade, $method);
         }
 
         try {
-            return $methodReflection->invokeArgs($instance, $args);
+            return $reflection->invokeArgs($instance, $args);
         } catch (Throwable $e) {
-            throw new FacadeException("Error invoking method {$method} on facade {$facade}: " . $e->getMessage(), 0, $e);
+            throw FacadeException::methodInvocationFailed($facade, $method, $e);
         }
     }
 }

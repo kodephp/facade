@@ -9,28 +9,38 @@ use Kode\Facade\Exception\FacadeException;
 use Psr\Container\ContainerInterface;
 
 /**
- * 上下文安全的门面管理器
- * 
- * 该类为每个协程/上下文环境提供独立的门面实例缓存，
- * 确保在fiber、swoole等协程环境下门面实例不会相互污染。
+ * 上下文安全门面管理器
+ *
+ * 为每个协程/上下文环境提供独立的门面实例缓存，
+ * 确保在 Fiber、Swoole、Swow 等协程环境下门面实例不会相互污染。
+ *
+ * @package Kode\Facade
+ * @author  KodePHP <382601296@qq.com>
+ * @license Apache-2.0
  */
-class ContextualFacadeManager
+final class ContextualFacadeManager
 {
     /**
-     * 上下文键名
+     * 上下文键名前缀
      */
-    private const CONTEXT_KEY = '__kode_facade_instances';
+    private const CONTEXT_KEY_PREFIX = '__kode_facade_instances';
 
     /**
-     * 容器实例
+     * 服务容器实例
      */
     private static ?ContainerInterface $container = null;
 
     /**
+     * 私有构造函数，防止实例化
+     */
+    private function __construct()
+    {
+    }
+
+    /**
      * 设置服务容器
      *
-     * @param ContainerInterface $container
-     * @return void
+     * @param ContainerInterface $container PSR-11 容器实例
      */
     public static function setContainer(ContainerInterface $container): void
     {
@@ -41,12 +51,12 @@ class ContextualFacadeManager
      * 获取服务容器
      *
      * @return ContainerInterface
-     * @throws \RuntimeException
+     * @throws FacadeException 如果容器未设置
      */
     public static function getContainer(): ContainerInterface
     {
         if (self::$container === null) {
-            throw new \RuntimeException('Facade container has not been set.');
+            throw FacadeException::containerNotSet();
         }
 
         return self::$container;
@@ -55,79 +65,129 @@ class ContextualFacadeManager
     /**
      * 获取门面实例
      *
-     * @param string $facadeClass
-     * @return object
+     * 从当前上下文获取或创建门面实例。
+     *
+     * @param string $facadeClass 门面类名
+     * @return object 服务实例
+     * @throws FacadeException
      */
     public static function getInstance(string $facadeClass): object
     {
-        // 获取当前上下文的实例缓存
-        $instances = self::getContextInstances($facadeClass);
-        
-        $serviceId = $facadeClass::getServiceId();
-        
-        // 如果当前上下文没有缓存该实例，则从容器获取并缓存
-        if (!isset($instances[$serviceId])) {
-            $container = self::getContainer();
+        $serviceId = self::getServiceId($facadeClass);
+        $contextKey = self::getContextKey($facadeClass);
 
-            if (!$container->has($serviceId)) {
-                throw FacadeException::noResolvedInstance($facadeClass);
-            }
+        $instances = Context::get($contextKey, []);
 
-            $instance = $container->get($serviceId);
-            if (!is_object($instance)) {
-                throw new FacadeException("Resolved instance for {$facadeClass} is not an object");
-            }
-
-            $instances[$serviceId] = $instance;
-            self::setContextInstances($instances, $facadeClass);
+        if (isset($instances[$serviceId])) {
+            return $instances[$serviceId];
         }
 
-        return $instances[$serviceId];
+        $instance = self::resolveFromContainer($facadeClass, $serviceId);
+
+        $instances[$serviceId] = $instance;
+        Context::set($contextKey, $instances);
+
+        return $instance;
     }
 
+    /**
+     * 检查门面实例是否存在于当前上下文
+     *
+     * @param string $facadeClass 门面类名
+     * @return bool
+     */
     public static function hasInstance(string $facadeClass): bool
     {
-        $instances = self::getContextInstances($facadeClass);
-        $serviceId = $facadeClass::getServiceId();
+        $serviceId = self::getServiceId($facadeClass);
+        $contextKey = self::getContextKey($facadeClass);
+
+        $instances = Context::get($contextKey, []);
 
         return isset($instances[$serviceId]);
     }
 
     /**
      * 清除当前上下文的所有门面实例
-     *
-     * @return void
      */
     public static function clearInstances(): void
     {
-        // We can't easily clear instances for all facade classes
-        // In a real implementation, we might want to keep track of all facade classes
-        // For now, we'll just clear the context entirely
-        Context::clear();
+        Context::delete(self::CONTEXT_KEY_PREFIX);
     }
 
     /**
-     * 获取当前上下文的实例缓存
+     * 清除指定门面在当前上下文的实例
      *
-     * @param string $facadeClass
-     * @return array
+     * @param string $facadeClass 门面类名
      */
-    private static function getContextInstances(string $facadeClass): array
+    public static function clearInstance(string $facadeClass): void
     {
-        $contextKey = self::CONTEXT_KEY . '.' . $facadeClass;
-        return Context::get($contextKey, []);
+        $contextKey = self::getContextKey($facadeClass);
+        Context::delete($contextKey);
     }
 
     /**
-     * 设置当前上下文的实例缓存
+     * 从容器解析服务实例
      *
-     * @param array $instances
-     * @param string $facadeClass
-     * @return void
+     * @param string $facadeClass 门面类名
+     * @param string $serviceId   服务ID
+     * @return object
+     * @throws FacadeException
      */
-    private static function setContextInstances(array $instances, string $facadeClass): void
+    private static function resolveFromContainer(string $facadeClass, string $serviceId): object
     {
-        $contextKey = self::CONTEXT_KEY . '.' . $facadeClass;
-        Context::set($contextKey, $instances);
+        $container = self::getContainer();
+
+        if (!$container->has($serviceId)) {
+            throw FacadeException::noResolvedInstance($facadeClass);
+        }
+
+        $instance = $container->get($serviceId);
+
+        if (!is_object($instance)) {
+            throw FacadeException::invalidInstance($facadeClass);
+        }
+
+        return $instance;
+    }
+
+    /**
+     * 获取门面的服务ID
+     *
+     * @param string $facadeClass 门面类名
+     * @return string
+     * @throws FacadeException
+     */
+    private static function getServiceId(string $facadeClass): string
+    {
+        if (!class_exists($facadeClass)) {
+            throw FacadeException::unknownFacade($facadeClass);
+        }
+
+        if (!method_exists($facadeClass, 'getServiceId')) {
+            throw FacadeException::unknownFacade($facadeClass);
+        }
+
+        return $facadeClass::getServiceId();
+    }
+
+    /**
+     * 获取上下文存储键
+     *
+     * @param string $facadeClass 门面类名
+     * @return string
+     */
+    private static function getContextKey(string $facadeClass): string
+    {
+        return self::CONTEXT_KEY_PREFIX . '.' . $facadeClass;
+    }
+
+    /**
+     * 重置管理器状态
+     *
+     * @internal 用于测试
+     */
+    public static function reset(): void
+    {
+        self::$container = null;
     }
 }

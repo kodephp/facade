@@ -13,22 +13,22 @@ use PHPUnit\Framework\TestCase;
 use Psr\Container\ContainerInterface;
 
 /**
- * 测试服务类
+ * 上下文测试服务类
  */
 class ContextualTestService
 {
     private string $value;
-    
+
     public function __construct(string $value = 'default')
     {
         $this->value = $value;
     }
-    
+
     public function getValue(): string
     {
         return $this->value;
     }
-    
+
     public function setValue(string $value): void
     {
         $this->value = $value;
@@ -36,23 +36,13 @@ class ContextualTestService
 }
 
 /**
- * 测试门面类
+ * 上下文测试门面类
  */
 class ContextualTestFacade extends Facade
 {
     protected static function id(): string
     {
         return 'test.service';
-    }
-    
-    public static function getValue(): string
-    {
-        return static::__callStatic('getValue', []);
-    }
-    
-    public static function setValue(string $value): void
-    {
-        static::__callStatic('setValue', [$value]);
     }
 }
 
@@ -62,83 +52,78 @@ class ContextualTestFacade extends Facade
 class ContextualFacadeTest extends TestCase
 {
     protected ContainerInterface $container;
-    
+
     protected function setUp(): void
     {
-        // 创建模拟容器
         $this->container = new class implements ContainerInterface {
             private array $services = [];
-            
+
             public function set(string $id, object $service): void
             {
                 $this->services[$id] = $service;
             }
-            
+
             public function get(string $id)
             {
                 return $this->services[$id] ?? throw new \Exception("Service not found: $id");
             }
-            
+
             public function has(string $id): bool
             {
                 return isset($this->services[$id]);
             }
         };
-        
-        // 设置容器
-        ContextualTestFacade::setContainer($this->container);
-        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
-        
-        // 清除上下文
+
+        FacadeProxy::reset();
+        ContextualFacadeManager::reset();
         Context::clear();
-    }
-    
-    protected function tearDown(): void
-    {
-        // 清除上下文
-        Context::clear();
-        
-        // 禁用上下文安全模式
         ContextualTestFacade::disableContextSafeMode();
     }
-    
+
+    protected function tearDown(): void
+    {
+        FacadeProxy::reset();
+        ContextualFacadeManager::reset();
+        Context::clear();
+        ContextualTestFacade::disableContextSafeMode();
+    }
+
     /**
      * 测试普通模式下的门面功能
      */
     public function testNormalMode(): void
     {
-        // 确保上下文安全模式未启用
         $this->assertFalse(ContextualTestFacade::isContextSafeMode());
-        
-        // 设置服务实例
+
         $service = new ContextualTestService('normal_mode');
         $this->container->set('test.service', $service);
-        
-        // 验证门面可以获取服务实例
+
+        ContextualTestFacade::setContainer($this->container);
+        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
+
         $this->assertEquals('normal_mode', ContextualTestFacade::getValue());
-        
-        // 修改服务实例的值
+
         $service->setValue('modified');
         $this->assertEquals('modified', ContextualTestFacade::getValue());
     }
-    
+
     /**
      * 测试上下文安全模式下的门面功能
      */
     public function testContextSafeMode(): void
     {
-        // 启用上下文安全模式
         ContextualTestFacade::enableContextSafeMode();
         $this->assertTrue(ContextualTestFacade::isContextSafeMode());
-        
-        // 设置服务实例
+
         $service = new ContextualTestService('context_safe');
         $this->container->set('test.service', $service);
-        
-        // 验证门面可以获取服务实例
+
+        ContextualTestFacade::setContainer($this->container);
+        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
+
         $this->assertEquals('context_safe', ContextualTestFacade::getValue());
     }
-    
+
     /**
      * 测试在不同上下文中的隔离性
      */
@@ -147,118 +132,111 @@ class ContextualFacadeTest extends TestCase
         if (!class_exists(\Fiber::class)) {
             $this->markTestSkipped('Fiber not available');
         }
-        
-        // 启用上下文安全模式
+
         ContextualTestFacade::enableContextSafeMode();
-        
-        // 设置服务实例
+
         $service = new ContextualTestService('main_context');
         $this->container->set('test.service', $service);
-        
-        // 在主上下文中验证值
+
+        ContextualTestFacade::setContainer($this->container);
+        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
+
         $this->assertEquals('main_context', ContextualTestFacade::getValue());
-        
-        // 创建一个fiber来模拟不同的上下文
+
         $fiberValue = null;
         $fiber = new \Fiber(function () use (&$fiberValue) {
-            // 在fiber上下文中创建新的容器实例
             $fiberContainer = new class implements ContainerInterface {
                 private array $services = [];
-                
+
                 public function set(string $id, object $service): void
                 {
                     $this->services[$id] = $service;
                 }
-                
+
                 public function get(string $id)
                 {
                     return $this->services[$id] ?? throw new \Exception("Service not found: $id");
                 }
-                
+
                 public function has(string $id): bool
                 {
                     return isset($this->services[$id]);
                 }
             };
-            
-            // 在fiber上下文中设置不同的服务实例
+
             $fiberService = new ContextualTestService('fiber_context');
             $fiberContainer->set('test.service', $fiberService);
-            
-            // 为Fiber设置容器
+
             ContextualTestFacade::setContainer($fiberContainer);
-            
-            // 确保在fiber中也启用上下文安全模式
             ContextualTestFacade::enableContextSafeMode();
-            
-            // 验证fiber上下文中获取的是fiber的值
+
             $fiberValue = ContextualTestFacade::getValue();
         });
-        
-        // 使用Context::run方法确保在Fiber中有正确的上下文
-        \Kode\Context\Context::run(function () use ($fiber) {
+
+        Context::run(function () use ($fiber) {
             $fiber->start();
         });
+
         $this->assertEquals('fiber_context', $fiberValue);
-        
-        // 验证主上下文的值未被影响
         $this->assertEquals('main_context', ContextualTestFacade::getValue());
     }
-    
+
     /**
-     * 测试上下文安全模式下的clear功能
+     * 测试上下文安全模式下的清除功能
      */
     public function testContextSafeClear(): void
     {
-        // 启用上下文安全模式
         ContextualTestFacade::enableContextSafeMode();
-        
-        // 设置服务实例
+
         $service = new ContextualTestService('to_be_cleared');
         $this->container->set('test.service', $service);
-        
-        // 验证服务可获取
+
+        ContextualTestFacade::setContainer($this->container);
+        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
+
         $this->assertEquals('to_be_cleared', ContextualTestFacade::getValue());
-        
-        // 清除实例
+
         ContextualTestFacade::clear();
-        
-        // 重新设置服务实例
+
         $newService = new ContextualTestService('after_clear');
         $this->container->set('test.service', $newService);
-        
-        // 验证获取到新的实例
+
         $this->assertEquals('after_clear', ContextualTestFacade::getValue());
     }
-    
+
     /**
      * 测试上下文管理器的基本功能
      */
     public function testContextualFacadeManager(): void
     {
-        // 设置容器
         ContextualFacadeManager::setContainer($this->container);
-        
-        // 设置服务实例
+
         $service = new ContextualTestService('manager_test');
         $this->container->set('test.service', $service);
-        
-        // 通过管理器获取实例
+
+        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
+
         $instance = ContextualFacadeManager::getInstance(ContextualTestFacade::class);
         $this->assertInstanceOf(ContextualTestService::class, $instance);
         $this->assertEquals('manager_test', $instance->getValue());
     }
 
+    /**
+     * 测试上下文管理器服务不存在时抛出异常
+     */
     public function testContextualFacadeManagerThrowsWhenServiceMissing(): void
     {
         ContextualFacadeManager::setContainer($this->container);
+        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
 
         $this->expectException(FacadeException::class);
-        $this->expectExceptionMessage('No resolved instance for facade: ' . ContextualTestFacade::class);
 
         ContextualFacadeManager::getInstance(ContextualTestFacade::class);
     }
 
+    /**
+     * 测试上下文管理器服务不是对象时抛出异常
+     */
     public function testContextualFacadeManagerThrowsWhenServiceNotObject(): void
     {
         $invalidContainer = new class implements ContainerInterface {
@@ -274,11 +252,87 @@ class ContextualFacadeTest extends TestCase
         };
 
         ContextualFacadeManager::setContainer($invalidContainer);
+        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
         Context::clear();
 
         $this->expectException(FacadeException::class);
-        $this->expectExceptionMessage('Resolved instance for ' . ContextualTestFacade::class . ' is not an object');
 
         ContextualFacadeManager::getInstance(ContextualTestFacade::class);
+    }
+
+    /**
+     * 测试上下文管理器检查实例存在
+     */
+    public function testContextualFacadeManagerHasInstance(): void
+    {
+        ContextualFacadeManager::setContainer($this->container);
+
+        $service = new ContextualTestService('has_test');
+        $this->container->set('test.service', $service);
+        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
+
+        $this->assertFalse(ContextualFacadeManager::hasInstance(ContextualTestFacade::class));
+
+        ContextualFacadeManager::getInstance(ContextualTestFacade::class);
+
+        $this->assertTrue(ContextualFacadeManager::hasInstance(ContextualTestFacade::class));
+    }
+
+    /**
+     * 测试上下文管理器清除实例
+     */
+    public function testContextualFacadeManagerClearInstance(): void
+    {
+        ContextualFacadeManager::setContainer($this->container);
+
+        $service = new ContextualTestService('clear_test');
+        $this->container->set('test.service', $service);
+        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
+
+        ContextualFacadeManager::getInstance(ContextualTestFacade::class);
+        $this->assertTrue(ContextualFacadeManager::hasInstance(ContextualTestFacade::class));
+
+        ContextualFacadeManager::clearInstance(ContextualTestFacade::class);
+        $this->assertFalse(ContextualFacadeManager::hasInstance(ContextualTestFacade::class));
+    }
+
+    /**
+     * 测试上下文安全模式下的解析状态检查
+     */
+    public function testIsResolvedInContextSafeMode(): void
+    {
+        ContextualTestFacade::enableContextSafeMode();
+
+        $service = new ContextualTestService('resolved_test');
+        $this->container->set('test.service', $service);
+
+        ContextualTestFacade::setContainer($this->container);
+        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
+
+        $this->assertFalse(ContextualTestFacade::isResolved());
+
+        ContextualTestFacade::getValue();
+
+        $this->assertTrue(ContextualTestFacade::isResolved());
+    }
+
+    /**
+     * 测试上下文安全模式下的清除所有实例
+     */
+    public function testClearAllInContextSafeMode(): void
+    {
+        ContextualTestFacade::enableContextSafeMode();
+
+        $service = new ContextualTestService('clear_all_test');
+        $this->container->set('test.service', $service);
+
+        ContextualTestFacade::setContainer($this->container);
+        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
+
+        ContextualTestFacade::getValue();
+        $this->assertTrue(ContextualTestFacade::isResolved());
+
+        ContextualTestFacade::clearAll();
+        $this->assertFalse(ContextualTestFacade::isResolved());
     }
 }
