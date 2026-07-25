@@ -18,9 +18,11 @@ Thumbs.db
 
 # PHPUnit
 .phpunit.result.cache
+.phpunit.cache/
+# 注意：phpunit.xml.dist 是提交到仓库的规范配置文件，不应忽略；
+# 仅忽略本地覆盖用的 phpunit.xml。
+phpunit.xml
 
 # OS generated files
 .Trashes
 phpcs.xml.dist
-phpunit.xml.dist
-phpunit.xml

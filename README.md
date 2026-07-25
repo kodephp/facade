@@ -1,7 +1,8 @@
 # KodePHP Facade 组件
 
 > **包名:** `kode/facade`  
-> **版本:** 2.0.0 (稳定版)  
+> **版本:** 2.1.0 (稳定版)  
+> **版本来源:** 跟随 Git 标签（如 `v2.1.0`），`composer.json` 不再内嵌 `version` 字段
 > **PHP 版本:** >=8.1  
 > **作者:** KodePHP Team  
 > **许可证:** Apache-2.0  
@@ -493,7 +494,7 @@ vendor/kode/facade/
     "require": {
         "php": "^8.1",
         "psr/container": "^1.0 || ^2.0",
-        "kode/context": "^1.0"
+        "kode/context": "^2.1"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.0"

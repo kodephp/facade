@@ -31,17 +31,6 @@ final class FacadeException extends Exception implements ContainerExceptionInter
     }
 
     /**
-     * 创建未解析实例异常
-     *
-     * @param string $name 门面名称
-     * @return static
-     */
-    public static function noResolvedInstance(string $name): static
-    {
-        return new static("门面 {$name} 没有解析的实例");
-    }
-
-    /**
      * 创建未定义方法异常
      *
      * @param string $name   门面名称

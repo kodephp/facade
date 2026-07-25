@@ -1,6 +1,5 @@
 {
     "name": "kode/facade",
-    "version": "2.0.0",
     "type": "library",
     "description": "适用于 PHP 8.1+ 的健壮、通用门面组件，兼容 Laravel、Symfony、ThinkPHP、Webman 和 KodePHP。",
     "keywords": ["facade", "proxy", "static", "container", "psr", "kodephp"],

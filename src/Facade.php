@@ -19,8 +19,6 @@ use Throwable;
  * @package Kode\Facade
  * @author  KodePHP <382601296@qq.com>
  * @license Apache-2.0
- *
- * @method static mixed __callStatic(string $method, array $args)
  */
 abstract class Facade
 {
@@ -103,7 +101,7 @@ abstract class Facade
     public static function clearAll(): void
     {
         if (static::$contextSafe) {
-            Context::clear();
+            ContextualFacadeManager::clearInstances();
         } else {
             static::$resolvedInstances = [];
             FacadeProxy::clearInstances();
@@ -125,7 +123,7 @@ abstract class Facade
      *
      * 用于测试场景，替换门面的实际实例。
      *
-     * @param object $mock 模拟实例
+     * @param object|Closure $mock 模拟实例，或返回实例的闭包（Closure 本身也是 object）
      */
     public static function mock(object $mock): void
     {

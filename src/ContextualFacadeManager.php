@@ -111,7 +111,12 @@ final class ContextualFacadeManager
      */
     public static function clearInstances(): void
     {
-        Context::delete(self::CONTEXT_KEY_PREFIX);
+        $prefix = self::CONTEXT_KEY_PREFIX . '.';
+        foreach (Context::keys() as $key) {
+            if (str_starts_with($key, $prefix)) {
+                Context::delete($key);
+            }
+        }
     }
 
     /**
@@ -138,7 +143,7 @@ final class ContextualFacadeManager
         $container = self::getContainer();
 
         if (!$container->has($serviceId)) {
-            throw FacadeException::noResolvedInstance($facadeClass);
+            throw FacadeException::serviceNotFound($serviceId);
         }
 
         $instance = $container->get($serviceId);
@@ -161,6 +166,13 @@ final class ContextualFacadeManager
     {
         if (!class_exists($facadeClass)) {
             throw FacadeException::unknownFacade($facadeClass);
+        }
+
+        // 优先使用 FacadeProxy 的显式绑定（允许运行时覆盖），
+        // 否则回退到门面自身定义的 id()，与 FacadeProxy 的解析逻辑保持一致。
+        $bound = FacadeProxy::getServiceId($facadeClass);
+        if ($bound !== null) {
+            return $bound;
         }
 
         if (!method_exists($facadeClass, 'getServiceId')) {

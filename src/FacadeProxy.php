@@ -7,7 +7,6 @@ namespace Kode\Facade;
 use Closure;
 use Kode\Facade\Exception\FacadeException;
 use Psr\Container\ContainerInterface;
-use ReflectionClass;
 
 /**
  * 门面代理管理器
@@ -145,8 +144,8 @@ final class FacadeProxy
      *
      * 用于测试场景，替换门面的实际实例。
      *
-     * @param string $facade 门面类名
-     * @param object $mock   模拟实例或返回实例的闭包
+     * @param string         $facade 门面类名
+     * @param object|Closure $mock   模拟实例，或返回实例的闭包（Closure 本身也是 object）
      */
     public static function mock(string $facade, object $mock): void
     {
@@ -210,15 +209,15 @@ final class FacadeProxy
      */
     private static function resolveFromContainer(string $facade): object
     {
-        if (!isset(self::$bindings[$facade])) {
-            throw FacadeException::unknownFacade($facade);
-        }
-
         if (self::$container === null) {
             throw FacadeException::containerNotSet();
         }
 
-        $serviceId = self::$bindings[$facade];
+        $serviceId = self::$bindings[$facade] ?? self::resolveServiceIdFromFacade($facade);
+
+        if ($serviceId === null) {
+            throw FacadeException::unknownFacade($facade);
+        }
 
         if (!self::$container->has($serviceId)) {
             throw FacadeException::serviceNotFound($serviceId);
@@ -233,6 +232,30 @@ final class FacadeProxy
         self::$instances[$facade] = $instance;
 
         return $instance;
+    }
+
+    /**
+     * 从门面类自身回退解析服务ID
+     *
+     * 当未通过 bind() 显式绑定时，使用门面定义的 id() 作为服务ID，
+     * 使 bind() 成为可选的运行时覆盖手段，统一非上下文与上下文两种模式的解析来源。
+     *
+     * @param string $facade 门面类名
+     * @return string|null 解析到的服务ID，无法解析时返回 null
+     */
+    private static function resolveServiceIdFromFacade(string $facade): ?string
+    {
+        if (!class_exists($facade) || !is_subclass_of($facade, Facade::class)) {
+            return null;
+        }
+
+        if (!method_exists($facade, 'getServiceId')) {
+            return null;
+        }
+
+        $id = $facade::getServiceId();
+
+        return is_string($id) && $id !== '' ? $id : null;
     }
 
     /**
@@ -301,32 +324,5 @@ final class FacadeProxy
         self::$instances = [];
         self::$mocks = [];
         self::$bindings = [];
-    }
-
-    /**
-     * 检查门面是否启用了上下文安全模式
-     *
-     * @param string $facade 门面类名
-     * @return bool
-     */
-    public static function isContextSafeMode(string $facade): bool
-    {
-        if (!class_exists($facade)) {
-            return false;
-        }
-
-        try {
-            $reflection = new ReflectionClass($facade);
-            if (!$reflection->hasProperty('contextSafe')) {
-                return false;
-            }
-
-            $property = $reflection->getProperty('contextSafe');
-            $property->setAccessible(true);
-
-            return (bool) $property->getValue(null);
-        } catch (\Throwable) {
-            return false;
-        }
     }
 }

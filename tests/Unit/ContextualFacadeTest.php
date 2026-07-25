@@ -335,4 +335,56 @@ class ContextualFacadeTest extends TestCase
         ContextualTestFacade::clearAll();
         $this->assertFalse(ContextualTestFacade::isResolved());
     }
+
+    /**
+     * 测试上下文安全模式下 clearInstances 真正清除所有门面实例
+     *
+     * 回归测试：ContextualFacadeManager::clearInstances() 必须按前缀删除
+     * 实际写入上下文的实例键，而不能删除一个从未写入的键。
+     */
+    public function testContextSafeClearInstancesClearsAll(): void
+    {
+        ContextualTestFacade::enableContextSafeMode();
+
+        $service = new ContextualTestService('bulk_clear');
+        $this->container->set('test.service', $service);
+
+        ContextualTestFacade::setContainer($this->container);
+        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
+
+        ContextualTestFacade::getValue();
+        $this->assertTrue(ContextualFacadeManager::hasInstance(ContextualTestFacade::class));
+
+        ContextualFacadeManager::clearInstances();
+
+        $this->assertFalse(ContextualFacadeManager::hasInstance(ContextualTestFacade::class));
+    }
+
+    /**
+     * 测试上下文安全模式下 clearAll 不会误清无关上下文数据
+     *
+     * 回归测试：clearAll() 在上下文安全模式下应仅清除门面实例，
+     * 而不能调用 Context::clear() 清掉整个上下文中的其它数据。
+     */
+    public function testContextSafeClearAllKeepsUnrelatedContext(): void
+    {
+        ContextualTestFacade::enableContextSafeMode();
+
+        $service = new ContextualTestService('keep_others');
+        $this->container->set('test.service', $service);
+
+        ContextualTestFacade::setContainer($this->container);
+        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
+
+        // 在上下文中写入与门面无关的数据
+        Context::set('unrelated_context_key', 'should-stay');
+
+        ContextualTestFacade::getValue();
+        $this->assertTrue(ContextualTestFacade::isResolved());
+
+        ContextualTestFacade::clearAll();
+
+        $this->assertFalse(ContextualTestFacade::isResolved());
+        $this->assertSame('should-stay', Context::get('unrelated_context_key'));
+    }
 }

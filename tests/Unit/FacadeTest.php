@@ -349,6 +349,27 @@ class FacadeTest extends TestCase
 
         $this->assertTrue(FacadeProxy::isMocked(TestFacade::class));
     }
+
+    /**
+     * 测试未显式 bind 时仍能通过门面 id() 解析服务
+     *
+     * 回归测试：服务ID解析应统一以门面 id() 为回退来源，
+     * 使 bind() 成为可选的运行时覆盖手段。
+     */
+    public function testResolvesViaIdWithoutExplicitBinding(): void
+    {
+        $testInstance = new TestService();
+        $container = $this->createMock(ContainerInterface::class);
+
+        $container->method('has')->with('test-service')->willReturn(true);
+        $container->method('get')->with('test-service')->willReturn($testInstance);
+
+        TestFacade::setContainer($container);
+        // 注意：此处未调用 FacadeProxy::bind()
+
+        $this->assertEquals('test-value', TestFacade::getValue());
+        $this->assertTrue(TestFacade::isResolved());
+    }
 }
 
 /**
