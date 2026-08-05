@@ -11,8 +11,12 @@ use Psr\Container\ContainerInterface;
 /**
  * 门面代理管理器
  *
- * 管理门面类与实际服务实例之间的映射关系，提供服务绑定、实例获取、模拟等功能。
- * 支持上下文安全模式，确保在协程环境下实例隔离。
+ * 门面实例的**唯一权威缓存**（非上下文安全模式下）。负责：
+ * 服务容器持有、门面到服务ID的绑定、实例解析与缓存、测试替身（mock / swap）。
+ *
+ * 缓存一致性保证：任何会改变"门面 → 实例"映射的操作
+ * （setContainer / bind / bindMany / unbind / mock / clearMock）
+ * 都会同步失效对应的实例缓存，杜绝拿到过期实例。
  *
  * @package Kode\Facade
  * @author  KodePHP <382601296@qq.com>
@@ -28,7 +32,7 @@ final class FacadeProxy
     /**
      * 已解析的门面实例缓存
      *
-     * @var array<string, object>
+     * @var array<class-string, object>
      */
     private static array $instances = [];
 
@@ -56,10 +60,16 @@ final class FacadeProxy
     /**
      * 设置服务容器
      *
+     * 更换容器会失效所有已解析实例，避免继续返回旧容器创建的对象。
+     *
      * @param ContainerInterface $container PSR-11 容器实例
      */
     public static function setContainer(ContainerInterface $container): void
     {
+        if (self::$container !== $container) {
+            self::$instances = [];
+        }
+
         self::$container = $container;
     }
 
@@ -76,12 +86,18 @@ final class FacadeProxy
     /**
      * 绑定门面到服务ID
      *
+     * 绑定发生变化时会失效该门面已缓存的实例。
+     *
      * @template T of object
      * @param class-string<T> $facade    门面类名
      * @param string          $serviceId 服务容器中的服务ID
      */
     public static function bind(string $facade, string $serviceId): void
     {
+        if ((self::$bindings[$facade] ?? null) !== $serviceId) {
+            unset(self::$instances[$facade]);
+        }
+
         self::$bindings[$facade] = $serviceId;
     }
 
@@ -93,7 +109,7 @@ final class FacadeProxy
     public static function bindMany(array $bindings): void
     {
         foreach ($bindings as $facade => $serviceId) {
-            self::$bindings[$facade] = $serviceId;
+            self::bind($facade, $serviceId);
         }
     }
 
@@ -104,7 +120,7 @@ final class FacadeProxy
      */
     public static function unbind(string $facade): void
     {
-        unset(self::$bindings[$facade]);
+        unset(self::$bindings[$facade], self::$instances[$facade]);
     }
 
     /**
@@ -142,7 +158,8 @@ final class FacadeProxy
     /**
      * 模拟门面实例
      *
-     * 用于测试场景，替换门面的实际实例。
+     * 用于测试场景，替换门面的实际实例。传入 Closure 时按"工厂"语义处理：
+     * 每次取实例都会重新执行闭包。
      *
      * @param string         $facade 门面类名
      * @param object|Closure $mock   模拟实例，或返回实例的闭包（Closure 本身也是 object）
@@ -150,6 +167,7 @@ final class FacadeProxy
     public static function mock(string $facade, object $mock): void
     {
         self::$mocks[$facade] = $mock;
+        unset(self::$instances[$facade]);
     }
 
     /**
@@ -161,6 +179,20 @@ final class FacadeProxy
     public static function isMocked(string $facade): bool
     {
         return isset(self::$mocks[$facade]);
+    }
+
+    /**
+     * 直接替换门面的已解析实例
+     *
+     * 与 mock() 的区别：swap() 写入的是正常的实例缓存，不影响 isMocked() 判定，
+     * 适合运行时热替换（如切换驱动），调用 clear() 即可回退到容器解析。
+     *
+     * @param string $facade   门面类名
+     * @param object $instance 替换的实例
+     */
+    public static function swap(string $facade, object $instance): void
+    {
+        self::$instances[$facade] = $instance;
     }
 
     /**
@@ -178,11 +210,7 @@ final class FacadeProxy
             return self::resolveMock($facade);
         }
 
-        if (isset(self::$instances[$facade])) {
-            return self::$instances[$facade];
-        }
-
-        return self::resolveFromContainer($facade);
+        return self::$instances[$facade] ??= self::resolveFromContainer($facade);
     }
 
     /**
@@ -190,14 +218,23 @@ final class FacadeProxy
      *
      * @param string $facade 门面类名
      * @return object
+     * @throws FacadeException
      */
     private static function resolveMock(string $facade): object
     {
         $mock = self::$mocks[$facade];
-        if ($mock instanceof Closure) {
-            return $mock();
+
+        if (!$mock instanceof Closure) {
+            return $mock;
         }
-        return $mock;
+
+        $resolved = $mock();
+
+        if (!is_object($resolved)) {
+            throw FacadeException::invalidInstance($facade);
+        }
+
+        return $resolved;
     }
 
     /**
@@ -209,14 +246,14 @@ final class FacadeProxy
      */
     private static function resolveFromContainer(string $facade): object
     {
-        if (self::$container === null) {
-            throw FacadeException::containerNotSet();
-        }
-
-        $serviceId = self::$bindings[$facade] ?? self::resolveServiceIdFromFacade($facade);
+        $serviceId = self::resolveServiceId($facade);
 
         if ($serviceId === null) {
             throw FacadeException::unknownFacade($facade);
+        }
+
+        if (self::$container === null) {
+            throw FacadeException::containerNotSet();
         }
 
         if (!self::$container->has($serviceId)) {
@@ -229,33 +266,31 @@ final class FacadeProxy
             throw FacadeException::invalidInstance($facade);
         }
 
-        self::$instances[$facade] = $instance;
-
         return $instance;
     }
 
     /**
-     * 从门面类自身回退解析服务ID
+     * 解析门面对应的服务ID
      *
-     * 当未通过 bind() 显式绑定时，使用门面定义的 id() 作为服务ID，
-     * 使 bind() 成为可选的运行时覆盖手段，统一非上下文与上下文两种模式的解析来源。
+     * 优先使用 bind() 的显式绑定（运行时覆盖），否则回退到门面自身的 id()，
+     * 与上下文安全模式保持完全一致的解析来源。
      *
      * @param string $facade 门面类名
      * @return string|null 解析到的服务ID，无法解析时返回 null
      */
-    private static function resolveServiceIdFromFacade(string $facade): ?string
+    public static function resolveServiceId(string $facade): ?string
     {
-        if (!class_exists($facade) || !is_subclass_of($facade, Facade::class)) {
-            return null;
+        if (isset(self::$bindings[$facade])) {
+            return self::$bindings[$facade];
         }
 
-        if (!method_exists($facade, 'getServiceId')) {
+        if (!is_subclass_of($facade, Facade::class)) {
             return null;
         }
 
         $id = $facade::getServiceId();
 
-        return is_string($id) && $id !== '' ? $id : null;
+        return $id !== '' ? $id : null;
     }
 
     /**
@@ -267,6 +302,16 @@ final class FacadeProxy
     public static function hasInstance(string $facade): bool
     {
         return isset(self::$instances[$facade]) || isset(self::$mocks[$facade]);
+    }
+
+    /**
+     * 获取所有已解析的实例（用于调试）
+     *
+     * @return array<class-string, object>
+     */
+    public static function getInstances(): array
+    {
+        return self::$instances;
     }
 
     /**
@@ -288,10 +333,24 @@ final class FacadeProxy
     }
 
     /**
+     * 清除指定门面的模拟实例
+     *
+     * @param string $facade 门面类名
+     */
+    public static function clearMock(string $facade): void
+    {
+        unset(self::$mocks[$facade], self::$instances[$facade]);
+    }
+
+    /**
      * 清除所有模拟实例
      */
     public static function clearMocks(): void
     {
+        foreach (array_keys(self::$mocks) as $facade) {
+            unset(self::$instances[$facade]);
+        }
+
         self::$mocks = [];
     }
 
@@ -301,6 +360,7 @@ final class FacadeProxy
     public static function clearBindings(): void
     {
         self::$bindings = [];
+        self::$instances = [];
     }
 
     /**

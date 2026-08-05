@@ -23,6 +23,10 @@ Thumbs.db
 # 仅忽略本地覆盖用的 phpunit.xml。
 phpunit.xml
 
+# 本地专用（不提交仓库）：记忆目录与变更日志
+.workbuddy/
+CHANGELOG.md
+
 # OS generated files
 .Trashes
 phpcs.xml.dist

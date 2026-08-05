@@ -370,6 +370,181 @@ class FacadeTest extends TestCase
         $this->assertEquals('test-value', TestFacade::getValue());
         $this->assertTrue(TestFacade::isResolved());
     }
+
+    /**
+     * 测试 swap 运行时热替换实例
+     *
+     * swap 写入的是正常的实例缓存，不影响 isMocked() 判定，
+     * 调用 clear() 即可回退到容器解析。
+     */
+    public function testSwapReplacesInstance(): void
+    {
+        $testInstance = new TestService();
+        $container = $this->createMock(ContainerInterface::class);
+        $container->method('has')->willReturn(true);
+        $container->method('get')->willReturn($testInstance);
+
+        TestFacade::setContainer($container);
+        FacadeProxy::bind(TestFacade::class, 'test-service');
+
+        $this->assertSame('test-value', TestFacade::getValue());
+
+        $swapped = new class {
+            public function getValue(): string
+            {
+                return 'swapped';
+            }
+        };
+        FacadeProxy::swap(TestFacade::class, $swapped);
+
+        $this->assertSame('swapped', TestFacade::getValue());
+        $this->assertFalse(FacadeProxy::isMocked(TestFacade::class));
+
+        TestFacade::clear();
+        $this->assertSame('test-value', TestFacade::getValue());
+    }
+
+    /**
+     * 测试 unmock 撤销模拟并恢复容器解析
+     */
+    public function testUnmockRestoresContainerResolution(): void
+    {
+        $mocked = new class {
+            public function getValue(): string
+            {
+                return 'mocked';
+            }
+        };
+        TestFacade::mock($mocked);
+
+        $this->assertSame('mocked', TestFacade::getValue());
+
+        $testInstance = new TestService();
+        $container = $this->createMock(ContainerInterface::class);
+        $container->method('has')->willReturn(true);
+        $container->method('get')->willReturn($testInstance);
+
+        TestFacade::setContainer($container);
+        FacadeProxy::bind(TestFacade::class, 'test-service');
+
+        TestFacade::unmock();
+
+        $this->assertSame('test-value', TestFacade::getValue());
+    }
+
+    /**
+     * 测试以实例方式使用门面（__call 转发）
+     */
+    public function testInstanceStyleCall(): void
+    {
+        $testInstance = new TestService();
+        $container = $this->createMock(ContainerInterface::class);
+        $container->method('has')->willReturn(true);
+        $container->method('get')->willReturn($testInstance);
+
+        TestFacade::setContainer($container);
+        FacadeProxy::bind(TestFacade::class, 'test-service');
+
+        $facade = new TestFacade();
+
+        $this->assertSame('test-value', $facade->getValue());
+    }
+
+    /**
+     * 测试业务异常透传（不被包装成 FacadeException）
+     *
+     * 门面是透明代理：服务方法自身抛出的业务异常原样向上传播。
+     */
+    public function testBusinessExceptionIsNotWrapped(): void
+    {
+        $throwing = new class {
+            public function boom(): void
+            {
+                throw new \RuntimeException('boom-business');
+            }
+        };
+
+        $container = $this->createMock(ContainerInterface::class);
+        $container->method('has')->willReturn(true);
+        $container->method('get')->willReturn($throwing);
+
+        TestFacade::setContainer($container);
+        FacadeProxy::bind(TestFacade::class, 'test-service');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('boom-business');
+
+        TestFacade::boom();
+    }
+
+    /**
+     * 测试每门面上下文安全模式相互隔离
+     *
+     * 一个门面启用上下文安全模式，不应影响其它门面的判定（回归：
+     * 曾因共享 static 属性导致全局污染）。
+     */
+    public function testPerFacadeContextSafeModeIsolation(): void
+    {
+        TestFacade::enableContextSafeMode();
+        $this->assertTrue(TestFacade::isContextSafeMode());
+        $this->assertFalse(AnotherFacade::isContextSafeMode());
+
+        AnotherFacade::enableContextSafeMode();
+        $this->assertTrue(AnotherFacade::isContextSafeMode());
+
+        TestFacade::disableContextSafeMode();
+        $this->assertFalse(TestFacade::isContextSafeMode());
+        $this->assertTrue(AnotherFacade::isContextSafeMode());
+    }
+
+    /**
+     * 测试绑定变更后已缓存实例自动失效
+     *
+     * 绑定发生改变时，旧实例缓存必须失效并重新从容器解析，
+     * 否则会返回过期实例（历史缺陷）。
+     */
+    public function testInstanceCacheInvalidatedOnRebind(): void
+    {
+        $serviceA = new TestService();
+        $serviceB = new class {
+            public function getValue(): string
+            {
+                return 'service-b';
+            }
+        };
+
+        $container = new class ($serviceA, $serviceB) implements ContainerInterface {
+            public function __construct(
+                private object $a,
+                private object $b
+            ) {
+            }
+
+            public function get(string $id): object
+            {
+                return match ($id) {
+                    'service-a' => $this->a,
+                    'service-b' => $this->b,
+                    default => throw new \RuntimeException("unknown: $id"),
+                };
+            }
+
+            public function has(string $id): bool
+            {
+                return $id === 'service-a' || $id === 'service-b';
+            }
+        };
+
+        TestFacade::setContainer($container);
+        FacadeProxy::bind(TestFacade::class, 'service-a');
+
+        $this->assertSame('test-value', TestFacade::getValue());
+
+        // 重新绑定到另一个服务ID，旧实例缓存必须失效
+        FacadeProxy::bind(TestFacade::class, 'service-b');
+
+        $this->assertSame('service-b', TestFacade::getValue());
+    }
 }
 
 /**

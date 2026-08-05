@@ -1,9 +1,9 @@
 # KodePHP Facade 组件
 
 > **包名:** `kode/facade`  
-> **版本:** 2.1.0 (稳定版)  
-> **版本来源:** 跟随 Git 标签（如 `v2.1.0`），`composer.json` 不再内嵌 `version` 字段
-> **PHP 版本:** >=8.1  
+> **版本:** 3.0.0 (稳定版)  
+> **版本来源:** 跟随 Git 标签（如 `v3.0.0`），`composer.json` 不再内嵌 `version` 字段
+> **PHP 版本:** >=8.3  
 > **作者:** KodePHP Team  
 > **许可证:** Apache-2.0  
 > **IDE 支持:** PhpStorm, VS Code
@@ -17,9 +17,9 @@
 该组件提供：
 
 - ✅ **静态代理** - 实现服务容器绑定的动态调用
-- ✅ **PHP 8.1+ 支持** - 支持所有新特性（协变、逆变、枚举、只读类等）
+- ✅ **PHP 8.3+ 支持** - 使用类型化类常量等 8.3 新特性，支持枚举、只读类等
 - ✅ **协程安全** - 完全无副作用，不影响协程、多线程、多进程模型
-- ✅ **反射缓存** - 使用反射 + 缓存实现安全、快速的方法调用
+- ✅ **可调用性缓存** - 用 `Closure::fromCallable()` 直接调用替代反射 `invokeArgs`，调用更快
 - ✅ **上下文隔离** - 支持 Fiber、Swoole、Swow 等协程环境的上下文隔离
 - ✅ **跨框架兼容** - 可作为通用组件在任何 PSR-11 容器中使用
 - ✅ **IDE 友好** - 提供完整的 PHPDoc 智能提示支持
@@ -31,7 +31,7 @@
 | 特性 | 说明 |
 |------|------|
 | 🔐 **无全局状态污染** | 不使用 `static::$app` 全局赋值，通过 `ContainerInterface` 注入 |
-| ⚡ **性能优化** | 方法映射缓存 + 反射缓存，避免重复解析 |
+| ⚡ **性能优化** | 方法调用缓存（可调用闭包）+ 实例身份判定失效，避免重复解析 |
 | 🔄 **协变逆变支持** | 接口返回类型与参数支持 PHP 泛型风格协变与逆变 |
 | 🧱 **解耦设计** | 仅依赖 `Psr\Container\ContainerInterface`，不依赖具体实现 |
 | 🔧 **高度可配置** | 支持自定义容器实现、门面映射、方法缓存等 |
@@ -431,14 +431,15 @@ interface SpecificEventDispatcher extends EventDispatcher
 
 ### ✅ 反射安全调用（带缓存）
 
-内部使用 `ReflectionMethod` + 数组缓存：
+内部用 `Closure::fromCallable([$instance, $method])` 直接调用，比反射 `invokeArgs` 开销更低；
+按「门面 + 方法」缓存，并以实例对象身份（`!==`）判定失效，实例变化（mock / swap / clear）即自动重建：
 
 ```php
-$reflector = new ReflectionMethod($instance, $method);
-$reflector->invokeArgs($instance, $args);
+$callable = Closure::fromCallable([$instance, $method]);
+$callable(...$args);
 ```
 
-调用信息缓存于静态数组，避免重复反射。
+门面是**透明代理**：服务方法自身抛出的业务异常原样向上传播，绝不被包装成 `FacadeException`。
 
 ---
 
@@ -482,7 +483,7 @@ vendor/kode/facade/
 {
     "name": "kode/facade",
     "type": "library",
-    "description": "适用于 PHP 8.1+ 的健壮、通用门面组件，兼容 Laravel、Symfony、ThinkPHP、Webman 和 KodePHP。",
+    "description": "适用于 PHP 8.3+ 的健壮、通用门面组件，兼容 Laravel、Symfony、ThinkPHP、Webman 和 KodePHP。",
     "keywords": ["facade", "proxy", "static", "container", "psr", "kodephp"],
     "license": "Apache-2.0",
     "authors": [
@@ -492,7 +493,7 @@ vendor/kode/facade/
         }
     ],
     "require": {
-        "php": "^8.1",
+        "php": "^8.3",
         "psr/container": "^1.0 || ^2.0",
         "kode/context": "^2.1"
     },
