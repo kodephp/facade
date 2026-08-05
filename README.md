@@ -1,8 +1,8 @@
 # KodePHP Facade 组件
 
 > **包名:** `kode/facade`  
-> **版本:** 3.0.0 (稳定版)  
-> **版本来源:** 跟随 Git 标签（如 `v3.0.0`），`composer.json` 不再内嵌 `version` 字段
+> **版本:** 3.1.0 (稳定版)  
+> **版本来源:** 跟随 Git 标签（如 `v3.1.0`），`composer.json` 不再内嵌 `version` 字段
 > **PHP 版本:** >=8.3  
 > **作者:** KodePHP Team  
 > **许可证:** Apache-2.0  
@@ -86,7 +86,7 @@ abstract class Facade
     public static function isResolved(): bool;
 
     /**
-     * 获取此门面的服务ID
+     * 获取此门面实际生效的服务ID（绑定优先于 id()）
      */
     public static function getServiceId(): string;
 
@@ -99,6 +99,36 @@ abstract class Facade
      * 检查门面实例上是否存在指定方法
      */
     public static function hasMethod(string $method): bool;
+
+    /**
+     * 模拟门面实例（用于测试）
+     */
+    public static function mock(object $mock): void;
+
+    /**
+     * 撤销当前门面的模拟
+     */
+    public static function unmock(): void;
+
+    /**
+     * 检查当前门面是否被模拟
+     */
+    public static function isMocked(): bool;
+
+    /**
+     * 绑定当前门面到服务ID（门面自绑定）
+     */
+    public static function bind(string $serviceId): void;
+
+    /**
+     * 解除当前门面的绑定
+     */
+    public static function unbind(): void;
+
+    /**
+     * 运行时热替换当前门面的已解析实例
+     */
+    public static function swap(object $instance): void;
 
     /**
      * 启用上下文安全模式
@@ -388,6 +418,33 @@ Mail::mock($mockMailer);
 // 现在调用将使用模拟实例
 Mail::send('test@example.com', 'Test', 'Body'); // 输出: [MOCK] Sending email to test@example.com
 ```
+
+### ✅ 门面级绑定与热替换
+
+除了直接操作 `FacadeProxy`，也可在门面自身上完成绑定、解绑、热替换与模拟检查，
+让 `Facade` 成为完整的业务侧主 API，无需额外引用 `FacadeProxy`：
+
+```php
+use App\Facade\Mail;
+
+// 门面自绑定（等价于 FacadeProxy::bind(Mail::class, 'mailer')）
+Mail::bind('mailer');
+
+// 运行时热替换实例（不影响 isMocked 判定，clear() 即可回退）
+Mail::swap($alternativeMailer);
+echo Mail::getDriver(); // 使用替换后的实例
+
+// 检查 / 撤销模拟
+if (Mail::isMocked()) {
+    Mail::unmock();
+}
+
+// 解绑
+Mail::unbind();
+```
+
+`getServiceId()` 返回**实际生效**的服务ID：显式绑定优先于门面自身 `id()`，
+与实例解析逻辑完全一致。
 
 ---
 

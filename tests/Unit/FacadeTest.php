@@ -545,6 +545,88 @@ class FacadeTest extends TestCase
 
         $this->assertSame('service-b', TestFacade::getValue());
     }
+
+    /**
+     * 测试门面自绑定与解绑（Facade::bind / unbind）
+     */
+    public function testFacadeSelfBindAndUnbind(): void
+    {
+        $this->assertFalse(FacadeProxy::isBound(TestFacade::class));
+
+        TestFacade::bind('test-service');
+        $this->assertTrue(FacadeProxy::isBound(TestFacade::class));
+        $this->assertSame('test-service', FacadeProxy::getServiceId(TestFacade::class));
+
+        TestFacade::unbind();
+        $this->assertFalse(FacadeProxy::isBound(TestFacade::class));
+    }
+
+    /**
+     * 测试门面级 swap 运行时热替换
+     */
+    public function testFacadeSwapViaFacade(): void
+    {
+        $testInstance = new TestService();
+        $container = $this->createMock(ContainerInterface::class);
+        $container->method('has')->willReturn(true);
+        $container->method('get')->willReturn($testInstance);
+
+        TestFacade::setContainer($container);
+        TestFacade::bind('test-service');
+
+        $this->assertSame('test-value', TestFacade::getValue());
+
+        $swapped = new class {
+            public function getValue(): string
+            {
+                return 'facade-swapped';
+            }
+        };
+        TestFacade::swap($swapped);
+
+        $this->assertSame('facade-swapped', TestFacade::getValue());
+        $this->assertFalse(TestFacade::isMocked());
+
+        TestFacade::clear();
+        $this->assertSame('test-value', TestFacade::getValue());
+    }
+
+    /**
+     * 测试门面级 isMocked 透传
+     */
+    public function testFacadeIsMockedViaFacade(): void
+    {
+        $this->assertFalse(TestFacade::isMocked());
+
+        TestFacade::mock(new class {
+            public function getValue(): string
+            {
+                return 'mocked';
+            }
+        });
+
+        $this->assertTrue(TestFacade::isMocked());
+        $this->assertSame('mocked', TestFacade::getValue());
+
+        TestFacade::unmock();
+        $this->assertFalse(TestFacade::isMocked());
+    }
+
+    /**
+     * 测试 getServiceId 返回实际生效的服务ID（绑定优先于 id()）
+     */
+    public function testGetServiceIdReflectsBindingPriority(): void
+    {
+        // 未绑定时回退到门面自身 id()
+        $this->assertSame('test-service', TestFacade::getServiceId());
+
+        // 绑定到不同服务ID后，应返回绑定值（与解析逻辑一致）
+        TestFacade::bind('overridden-service');
+        $this->assertSame('overridden-service', TestFacade::getServiceId());
+
+        TestFacade::unbind();
+        $this->assertSame('test-service', TestFacade::getServiceId());
+    }
 }
 
 /**

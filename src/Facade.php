@@ -137,6 +137,51 @@ abstract class Facade
     }
 
     /**
+     * 检查当前门面是否被模拟
+     *
+     * @return bool
+     */
+    public static function isMocked(): bool
+    {
+        return FacadeProxy::isMocked(static::class);
+    }
+
+    /**
+     * 绑定当前门面到服务ID（门面自绑定）
+     *
+     * 等价于 FacadeProxy::bind(static::class, $serviceId)，
+     * 让门面在业务代码中即可完成绑定，无需额外引用 FacadeProxy。
+     *
+     * @param string $serviceId 服务容器中的服务ID
+     */
+    public static function bind(string $serviceId): void
+    {
+        FacadeProxy::bind(static::class, $serviceId);
+    }
+
+    /**
+     * 解除当前门面的绑定
+     */
+    public static function unbind(): void
+    {
+        FacadeProxy::unbind(static::class);
+    }
+
+    /**
+     * 运行时热替换当前门面的已解析实例
+     *
+     * 等价于 FacadeProxy::swap(static::class, $instance)：写入正常实例缓存，
+     * 不影响 isMocked() 判定；调用 clear() 即可回退到容器解析。
+     * 适用于运行时切换驱动等场景。
+     *
+     * @param object $instance 替换的实例
+     */
+    public static function swap(object $instance): void
+    {
+        FacadeProxy::swap(static::class, $instance);
+    }
+
+    /**
      * 检查门面是否已解析
      *
      * @return bool
@@ -151,13 +196,16 @@ abstract class Facade
     }
 
     /**
-     * 获取门面的服务ID
+     * 获取门面实际生效的服务ID
+     *
+     * 与实例解析逻辑保持一致：显式绑定（FacadeProxy::bind）优先于门面自身 id()，
+     * 因此返回的是「真正用于解析容器服务的ID」，而非总是 id()。
      *
      * @return string
      */
     public static function getServiceId(): string
     {
-        return static::id();
+        return FacadeProxy::getServiceId(static::class) ?? static::id();
     }
 
     /**
