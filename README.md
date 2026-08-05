@@ -1,8 +1,8 @@
 # KodePHP Facade 组件
 
 > **包名:** `kode/facade`  
-> **版本:** 3.1.0 (稳定版)  
-> **版本来源:** 跟随 Git 标签（如 `v3.1.0`），`composer.json` 不再内嵌 `version` 字段
+> **版本:** 3.2.0 (稳定版)  
+> **版本来源:** 跟随 Git 标签（如 `v3.2.0`），`composer.json` 不再内嵌 `version` 字段
 > **PHP 版本:** >=8.3  
 > **作者:** KodePHP Team  
 > **许可证:** Apache-2.0  
@@ -20,6 +20,7 @@
 - ✅ **PHP 8.3+ 支持** - 使用类型化类常量等 8.3 新特性，支持枚举、只读类等
 - ✅ **协程安全** - 完全无副作用，不影响协程、多线程、多进程模型
 - ✅ **可调用性缓存** - 用 `Closure::fromCallable()` 直接调用替代反射 `invokeArgs`，调用更快
+- ✅ **原子实例解析** - 上下文模式下用 `Context::getOrSet()` 原子解析，解析失败绝不缓存坏状态
 - ✅ **上下文隔离** - 支持 Fiber、Swoole、Swow 等协程环境的上下文隔离
 - ✅ **跨框架兼容** - 可作为通用组件在任何 PSR-11 容器中使用
 - ✅ **IDE 友好** - 提供完整的 PHPDoc 智能提示支持
@@ -247,6 +248,12 @@ final class ContextualFacadeManager
     public static function clearInstances(): void;
 }
 ```
+
+**实现要点（基于 `kode/context` 3.0 的执行单元隔离 + WeakMap 自动回收）：**
+
+- 每个「门面 + 服务ID」在上下文中拥有**独立键**，而非共享一个可变数组，彻底消除「读-改-写」共享 map 的竞态与类型污染。
+- 实例解析使用 `Context::getOrSet()` 的原子 get-or-compute 语义：键不存在时才解析并写入；若解析失败（容器/服务异常）异常直接传播，且**不会写入任何失败状态**，下次调用会重新解析。
+- 批量/单门面清除均按前缀匹配，因此运行时改绑（服务ID 变化）后旧键也能被正确清理。
 
 ---
 
@@ -552,7 +559,7 @@ vendor/kode/facade/
     "require": {
         "php": "^8.3",
         "psr/container": "^1.0 || ^2.0",
-        "kode/context": "^2.1"
+        "kode/context": "^3.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.0"

@@ -387,4 +387,66 @@ class ContextualFacadeTest extends TestCase
         $this->assertFalse(ContextualTestFacade::isResolved());
         $this->assertSame('should-stay', Context::get('unrelated_context_key'));
     }
+
+    /**
+     * 测试解析失败时（服务缺失）不残留失败状态
+     *
+     * getOrSet 语义保证：工厂抛异常时不会写入任何键，
+     * 因此失败后 hasInstance 必须仍为 false，下次调用会重新解析。
+     */
+    public function testGetOrSetDoesNotCacheFailedResolution(): void
+    {
+        ContextualFacadeManager::setContainer($this->container);
+        FacadeProxy::bind(ContextualTestFacade::class, 'missing.service');
+
+        $thrown = false;
+        try {
+            ContextualFacadeManager::getInstance(ContextualTestFacade::class);
+        } catch (FacadeException $e) {
+            $thrown = true;
+        }
+
+        $this->assertTrue($thrown, '服务缺失应抛出 FacadeException');
+        $this->assertFalse(
+            ContextualFacadeManager::hasInstance(ContextualTestFacade::class),
+            '解析失败后不应残留失败状态的缓存键'
+        );
+    }
+
+    /**
+     * 测试运行时改绑后 clearInstance 按门面前缀清除所有服务键
+     *
+     * 每「门面 + 服务ID」使用独立键；改绑后旧键必须也能被一次性清除，
+     * 否则会出现"已切换驱动但旧实例仍驻留"的脏数据。
+     */
+    public function testClearInstanceClearsReboundServiceKeys(): void
+    {
+        ContextualFacadeManager::setContainer($this->container);
+
+        $a = new ContextualTestService('svc-a');
+        $b = new ContextualTestService('svc-b');
+        $this->container->set('service-a', $a);
+        $this->container->set('service-b', $b);
+
+        FacadeProxy::bind(ContextualTestFacade::class, 'service-a');
+        $this->assertSame('svc-a', ContextualFacadeManager::getInstance(ContextualTestFacade::class)->getValue());
+
+        FacadeProxy::bind(ContextualTestFacade::class, 'service-b');
+        $this->assertSame('svc-b', ContextualFacadeManager::getInstance(ContextualTestFacade::class)->getValue());
+
+        $prefix = '__kode_facade_instances.' . ContextualTestFacade::class . '.';
+        $keysBefore = array_filter(
+            Context::keys(),
+            static fn (string $k): bool => str_starts_with($k, $prefix)
+        );
+        $this->assertCount(2, $keysBefore, '改绑后上下文中应存在两个独立的服务键');
+
+        ContextualFacadeManager::clearInstance(ContextualTestFacade::class);
+
+        $keysAfter = array_filter(
+            Context::keys(),
+            static fn (string $k): bool => str_starts_with($k, $prefix)
+        );
+        $this->assertEmpty($keysAfter, 'clearInstance 应清除该门面在改绑前产生的所有服务键');
+    }
 }
