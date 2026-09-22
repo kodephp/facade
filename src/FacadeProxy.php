@@ -182,6 +182,26 @@ final class FacadeProxy
     }
 
     /**
+     * 取门面的模拟实例（不模拟时返回 null）
+     *
+     * 供上下文安全模式共用同一份 mock 注册表：mock 只在这里登记，
+     * 若上下文解析不读它，开启上下文模式后 mock()/unmock() 就会静默失效。
+     * Closure 工厂语义与 {@see self::getInstance()} 一致——每次调用都重新执行闭包。
+     *
+     * @param string $facade 门面类名
+     * @return object|null 已解析的模拟实例，未设置模拟时为 null
+     * @throws FacadeException 闭包返回值不是对象
+     */
+    public static function peekMock(string $facade): ?object
+    {
+        if (!isset(self::$mocks[$facade])) {
+            return null;
+        }
+
+        return self::resolveMock($facade);
+    }
+
+    /**
      * 直接替换门面的已解析实例
      *
      * 与 mock() 的区别：swap() 写入的是正常的实例缓存，不影响 isMocked() 判定，

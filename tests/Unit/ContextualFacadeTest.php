@@ -449,4 +449,62 @@ class ContextualFacadeTest extends TestCase
         );
         $this->assertEmpty($keysAfter, 'clearInstance 应清除该门面在改绑前产生的所有服务键');
     }
+
+    /**
+     * mock() 在上下文安全模式下必须同样生效
+     *
+     * mock 只登记在 FacadeProxy，而上下文模式的实例解析走 ContextualFacadeManager；
+     * 若两边不通气，开启上下文模式后 mock()/unmock() 会静默失效——测试拿到的是真服务，
+     * 断言却一路绿灯（比报错更糟）。Closure 工厂语义也必须在两条路径上一致。
+     */
+    public function testMockIsHonoredInContextSafeMode(): void
+    {
+        ContextualTestFacade::enableContextSafeMode();
+        ContextualFacadeManager::setContainer($this->container);
+        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
+        $this->container->set('test.service', new ContextualTestService('real'));
+
+        $this->assertSame('real', ContextualTestFacade::getValue(), '前置条件：未模拟时走容器');
+
+        ContextualTestFacade::mock(new ContextualTestService('mocked'));
+        $this->assertTrue(ContextualTestFacade::isMocked());
+        $this->assertSame('mocked', ContextualTestFacade::getValue(), '上下文模式下 mock 必须生效');
+
+        ContextualTestFacade::unmock();
+        $this->assertFalse(ContextualTestFacade::isMocked());
+        $this->assertSame('real', ContextualTestFacade::getValue(), 'unmock 后应回到容器解析');
+
+        $calls = 0;
+        ContextualTestFacade::mock(function () use (&$calls): ContextualTestService {
+            ++$calls;
+
+            return new ContextualTestService("factory-{$calls}");
+        });
+        $this->assertSame('factory-1', ContextualTestFacade::getValue());
+        $this->assertSame('factory-2', ContextualTestFacade::getValue(), 'Closure 工厂应每次重新执行');
+        $this->assertSame(2, $calls);
+    }
+
+    /**
+     * swap() 在上下文安全模式下必须对本执行单元生效
+     *
+     * 上下文模式的实例缓存住在执行单元里，只写 FacadeProxy 的进程级缓存的话，
+     * 紧接着的一次调用仍会读到旧实例；热替换（切驱动）当场失效。
+     */
+    public function testSwapIsHonoredInContextSafeMode(): void
+    {
+        ContextualTestFacade::enableContextSafeMode();
+        ContextualFacadeManager::setContainer($this->container);
+        FacadeProxy::bind(ContextualTestFacade::class, 'test.service');
+        $this->container->set('test.service', new ContextualTestService('real'));
+
+        $this->assertSame('real', ContextualTestFacade::getValue());
+
+        ContextualTestFacade::swap(new ContextualTestService('swapped'));
+        $this->assertSame('swapped', ContextualTestFacade::getValue(), '上下文模式下 swap 必须立即生效');
+        $this->assertFalse(ContextualTestFacade::isMocked(), 'swap 不该被记成 mock');
+
+        ContextualTestFacade::clear();
+        $this->assertSame('real', ContextualTestFacade::getValue(), 'clear 后回退到容器解析');
+    }
 }

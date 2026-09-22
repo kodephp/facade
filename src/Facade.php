@@ -179,6 +179,11 @@ abstract class Facade
     public static function swap(object $instance): void
     {
         FacadeProxy::swap(static::class, $instance);
+
+        // 上下文安全模式下实例缓存住在执行单元里，只写代理缓存的话本次调用看不到新实例。
+        if (self::isContextSafeFor(static::class)) {
+            ContextualFacadeManager::setInstance(static::class, $instance);
+        }
     }
 
     /**

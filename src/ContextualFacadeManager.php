@@ -82,6 +82,13 @@ final class ContextualFacadeManager
      */
     public static function getInstance(string $facadeClass): object
     {
+        // 模拟实例优先于上下文缓存：mock() 只登记在 FacadeProxy，
+        // 这里不读它的话，开启上下文安全模式后 mock()/unmock() 会静默失效（测试拿到真服务）。
+        $mock = FacadeProxy::peekMock($facadeClass);
+        if ($mock !== null) {
+            return $mock;
+        }
+
         $serviceId = self::getServiceId($facadeClass);
         $key = self::getInstanceKey($facadeClass, $serviceId);
 
@@ -89,6 +96,22 @@ final class ContextualFacadeManager
         return Context::getOrSet($key, static function () use ($facadeClass, $serviceId): object {
             return self::resolveFromContainer($facadeClass, $serviceId);
         });
+    }
+
+    /**
+     * 写入当前上下文的门面实例（热替换）
+     *
+     * 与 {@see FacadeProxy::swap()} 对应的上下文版本：把实例直接放进当前执行单元的缓存键，
+     * 下次 getInstance() 即命中，无需回容器。clear()/clearInstance() 后回退到容器解析。
+     *
+     * @param string $facadeClass 门面类名
+     * @param object $instance    替换的实例
+     */
+    public static function setInstance(string $facadeClass, object $instance): void
+    {
+        $serviceId = self::getServiceId($facadeClass);
+
+        Context::set(self::getInstanceKey($facadeClass, $serviceId), $instance);
     }
 
     /**
