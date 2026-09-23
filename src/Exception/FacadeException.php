@@ -38,6 +38,9 @@ final class FacadeException extends Exception implements ContainerExceptionInter
     /** 容器返回的不是对象 */
     public const int CODE_INVALID_INSTANCE = 1005;
 
+    /** 调用的是 PHP 保留的魔术方法名 */
+    public const int CODE_MAGIC_METHOD = 1006;
+
     /**
      * 创建未知门面异常
      *
@@ -97,5 +100,20 @@ final class FacadeException extends Exception implements ContainerExceptionInter
     public static function invalidInstance(string $facade): self
     {
         return new self("门面 {$facade} 解析的实例不是有效对象", self::CODE_INVALID_INSTANCE);
+    }
+
+    /**
+     * 创建魔术方法拦截异常
+     *
+     * @param string $name   门面名称
+     * @param string $method 方法名称
+     * @return self
+     */
+    public static function magicMethod(string $name, string $method): self
+    {
+        return new self(
+            "门面 {$name} 不转发 PHP 保留的魔术方法 {$method}（如 __construct/__clone/__destruct）",
+            self::CODE_MAGIC_METHOD
+        );
     }
 }

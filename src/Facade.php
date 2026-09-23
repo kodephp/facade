@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Kode\Facade;
 
 use Closure;
-use Kode\Context\Context;
 use Kode\Facade\Exception\FacadeException;
 use Psr\Container\ContainerInterface;
+use ReflectionClass;
 use ReflectionMethod;
 use Throwable;
 
@@ -53,6 +53,16 @@ abstract class Facade
     private static array $callableCache = [];
 
     /**
+     * 基类自身声明的公共方法名（首次用到时反射计算，之后复用）
+     *
+     * 这些名字在 PHP 里永远优先于 __callStatic，因此绝不会被转发到服务实例；
+     * hasMethod() 必须如实回答「静态调用能不能走到服务」，不能只反射实例。
+     *
+     * @var array<string, true>|null
+     */
+    private static ?array $reservedNames = null;
+
+    /**
      * 获取门面对应的服务标识
      *
      * 子类必须实现此方法，返回服务容器中的服务ID。
@@ -87,20 +97,23 @@ abstract class Facade
      */
     public static function setContainer(ContainerInterface $container): void
     {
+        // 换容器后旧实例可能整体失效，缓存的可调用闭包必须一起作废
+        self::$callableCache = [];
         FacadeProxy::setContainer($container);
         ContextualFacadeManager::setContainer($container);
     }
 
     /**
      * 清除当前门面的缓存实例
+     *
+     * 两条缓存都清：swap() 在非上下文模式下只写 FacadeProxy，上下文模式下双写，
+     * 若 clear() 只清单边，另一侧的替换实例会一直驻留（切换模式后即复活）。
      */
     public static function clear(): void
     {
-        if (self::isContextSafeFor(static::class)) {
-            ContextualFacadeManager::clearInstance(static::class);
-        } else {
-            FacadeProxy::clearInstance(static::class);
-        }
+        self::forgetCallables(static::class);
+        FacadeProxy::clearInstance(static::class);
+        ContextualFacadeManager::clearInstance(static::class);
     }
 
     /**
@@ -108,11 +121,9 @@ abstract class Facade
      */
     public static function clearAll(): void
     {
-        if (self::isContextSafeFor(static::class)) {
-            ContextualFacadeManager::clearInstances();
-        } else {
-            FacadeProxy::clearInstances();
-        }
+        self::$callableCache = [];
+        FacadeProxy::clearInstances();
+        ContextualFacadeManager::clearInstances();
     }
 
     /**
@@ -125,6 +136,7 @@ abstract class Facade
      */
     public static function mock(object $mock): void
     {
+        self::forgetCallables(static::class);
         FacadeProxy::mock(static::class, $mock);
     }
 
@@ -133,6 +145,7 @@ abstract class Facade
      */
     public static function unmock(): void
     {
+        self::forgetCallables(static::class);
         FacadeProxy::clearMock(static::class);
     }
 
@@ -156,6 +169,7 @@ abstract class Facade
      */
     public static function bind(string $serviceId): void
     {
+        self::forgetCallables(static::class);
         FacadeProxy::bind(static::class, $serviceId);
     }
 
@@ -164,6 +178,7 @@ abstract class Facade
      */
     public static function unbind(): void
     {
+        self::forgetCallables(static::class);
         FacadeProxy::unbind(static::class);
     }
 
@@ -178,6 +193,7 @@ abstract class Facade
      */
     public static function swap(object $instance): void
     {
+        self::forgetCallables(static::class);
         FacadeProxy::swap(static::class, $instance);
 
         // 上下文安全模式下实例缓存住在执行单元里，只写代理缓存的话本次调用看不到新实例。
@@ -234,10 +250,12 @@ abstract class Facade
      */
     public static function hasMethod(string $method): bool
     {
+        if (self::isReservedName($method)) {
+            return false;
+        }
+
         try {
-            $instance = static::getInstance();
-            $reflection = new ReflectionMethod($instance, $method);
-            return $reflection->isPublic();
+            return is_callable([static::getInstance(), $method]);
         } catch (Throwable) {
             return false;
         }
@@ -323,6 +341,14 @@ abstract class Facade
     {
         $facade = static::class;
 
+        // PHP 把 `__` 前缀保留给魔术方法。服务实例上的 __construct / __clone /
+        // __destruct / __serialize 都能被 Closure::fromCallable 取到并带上任意参数，
+        // 等于让调用方在代理之外重跑构造函数（绕过初始化约束、改写内部状态）。
+        // 门面只转发业务方法，魔术名一律视为不可达。
+        if (str_starts_with($method, '__')) {
+            throw FacadeException::magicMethod($facade, $method);
+        }
+
         $entry = self::$callableCache[$facade][$method] ?? null;
 
         if ($entry === null || $entry['instance'] !== $instance) {
@@ -338,6 +364,45 @@ abstract class Facade
         }
 
         return $entry['callable'](...$args);
+    }
+
+    /**
+     * 丢弃某门面的可调用缓存
+     *
+     * 缓存条目按「门面 + 方法」持有实例对象的强引用，且只在同门面下次解析时才会被
+     * 覆盖；公开 API（clear / swap / mock / bind / setContainer）改绑或替换实例后
+     * 若不主动剪枝，旧服务对象会被永久钉住无法回收。
+     *
+     * @param string $facade 门面类名
+     */
+    private static function forgetCallables(string $facade): void
+    {
+        unset(self::$callableCache[$facade]);
+    }
+
+    /**
+     * 名字是否被门面基类自身占用（永远不会转发到服务实例）
+     *
+     * @param string $method 方法名
+     * @return bool
+     */
+    private static function isReservedName(string $method): bool
+    {
+        if (str_starts_with($method, '__')) {
+            return true;
+        }
+
+        if (self::$reservedNames === null) {
+            $names = [];
+
+            foreach ((new ReflectionClass(self::class))->getMethods(ReflectionMethod::IS_PUBLIC) as $reflection) {
+                $names[$reflection->getName()] = true;
+            }
+
+            self::$reservedNames = $names;
+        }
+
+        return isset(self::$reservedNames[$method]);
     }
 
     /**

@@ -48,10 +48,17 @@ final class ContextualFacadeManager
     /**
      * 设置服务容器
      *
+     * 与 {@see FacadeProxy::setContainer()} 保持同一语义：更换容器即作废当前上下文
+     * 已缓存的门面实例，否则上下文会一直返回旧容器创建的对象（跨容器泄漏/脏读）。
+     *
      * @param ContainerInterface $container PSR-11 容器实例
      */
     public static function setContainer(ContainerInterface $container): void
     {
+        if (self::$container !== $container) {
+            self::clearInstances();
+        }
+
         self::$container = $container;
     }
 
@@ -117,11 +124,19 @@ final class ContextualFacadeManager
     /**
      * 检查门面实例是否存在于当前上下文
      *
+     * 与 {@see FacadeProxy::hasInstance()} 同口径：模拟实例同样算「已解析」，
+     * 否则开启上下文安全模式后 isResolved() 会在 mock() 之后假报未解析。
+     * 只看登记与否，绝不在此执行 Closure 工厂（那会有副作用）。
+     *
      * @param string $facadeClass 门面类名
      * @return bool
      */
     public static function hasInstance(string $facadeClass): bool
     {
+        if (FacadeProxy::isMocked($facadeClass)) {
+            return true;
+        }
+
         $serviceId = self::getServiceId($facadeClass);
         $key = self::getInstanceKey($facadeClass, $serviceId);
 
@@ -190,28 +205,23 @@ final class ContextualFacadeManager
     /**
      * 获取门面的服务ID
      *
+     * 直接复用 {@see FacadeProxy::resolveServiceId()}，让两条解析路径共用同一份
+     * 校验规则：必须是 Facade 子类且能解析出非空 ID。此前本地用
+     * class_exists + method_exists 松判，任意带 getServiceId() 的无关类都能进来。
+     *
      * @param string $facadeClass 门面类名
      * @return string
      * @throws FacadeException
      */
     private static function getServiceId(string $facadeClass): string
     {
-        if (!class_exists($facadeClass)) {
+        $serviceId = FacadeProxy::resolveServiceId($facadeClass);
+
+        if ($serviceId === null) {
             throw FacadeException::unknownFacade($facadeClass);
         }
 
-        // 优先使用 FacadeProxy 的显式绑定（允许运行时覆盖），
-        // 否则回退到门面自身定义的 id()，与 FacadeProxy 的解析逻辑保持一致。
-        $bound = FacadeProxy::getServiceId($facadeClass);
-        if ($bound !== null) {
-            return $bound;
-        }
-
-        if (!method_exists($facadeClass, 'getServiceId')) {
-            throw FacadeException::unknownFacade($facadeClass);
-        }
-
-        return $facadeClass::getServiceId();
+        return $serviceId;
     }
 
     /**

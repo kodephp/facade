@@ -1,8 +1,8 @@
 # KodePHP Facade 组件
 
 > **包名:** `kode/facade`  
-> **版本:** 3.2.0 (稳定版)  
-> **版本来源:** 跟随 Git 标签（如 `v3.2.0`），`composer.json` 不再内嵌 `version` 字段
+> **版本:** 3.3.0 (稳定版)  
+> **版本来源:** 跟随 Git 标签（如 `v3.3.0`），`composer.json` 不再内嵌 `version` 字段
 > **PHP 版本:** >=8.3  
 > **作者:** KodePHP Team  
 > **许可证:** Apache-2.0  
@@ -73,6 +73,9 @@ abstract class Facade
 
     /**
      * 清除当前门面的代理实例（用于测试或重置）
+     *
+     * 两条缓存（进程级代理 + 当前执行单元）一并作废，并剪掉可调用缓存，
+     * 使被替换/被缓存的服务实例可被回收。
      */
     public static function clear(): void;
 
@@ -97,7 +100,10 @@ abstract class Facade
     public static function call(string $method, array $args = []): mixed;
 
     /**
-     * 检查门面实例上是否存在指定方法
+     * 检查「经门面静态调用」能否走到服务实例上的该方法
+     *
+     * 基类自身声明的公共方法（clear/hasMethod/call…）与 `__` 前缀魔术名
+     * 永远不会被转发，一律返回 false；服务用 __call 兜底的方法返回 true。
      */
     public static function hasMethod(string $method): bool;
 
@@ -228,7 +234,7 @@ namespace Kode\Facade;
 final class ContextualFacadeManager
 {
     /**
-     * 设置服务容器
+     * 设置服务容器（换容器时作废当前执行单元的门面缓存）
      */
     public static function setContainer(ContainerInterface $container): void;
 
@@ -238,7 +244,7 @@ final class ContextualFacadeManager
     public static function getInstance(string $facadeClass): object;
 
     /**
-     * 检查门面实例是否存在于当前上下文
+     * 检查门面实例是否存在于当前上下文（登记过 mock 同样算已存在）
      */
     public static function hasInstance(string $facadeClass): bool;
 
@@ -254,6 +260,9 @@ final class ContextualFacadeManager
 - 每个「门面 + 服务ID」在上下文中拥有**独立键**，而非共享一个可变数组，彻底消除「读-改-写」共享 map 的竞态与类型污染。
 - 实例解析使用 `Context::getOrSet()` 的原子 get-or-compute 语义：键不存在时才解析并写入；若解析失败（容器/服务异常）异常直接传播，且**不会写入任何失败状态**，下次调用会重新解析。
 - 批量/单门面清除均按前缀匹配，因此运行时改绑（服务ID 变化）后旧键也能被正确清理。
+- 服务ID 解析复用 `FacadeProxy::resolveServiceId()`（v3.3.0 起）：两条路径共用同一份校验规则，
+  必须是 `Facade` 子类且能解析出非空 ID；此前上下文侧只判 `class_exists` + `method_exists`，
+  任意带 `getServiceId()` 的无关类也能被当门面拿去解析容器服务。
 
 ---
 
@@ -396,6 +405,9 @@ Mail::enableContextSafeMode();
       （v3.2.1 起。此前实例解析只读上下文缓存，开启本模式后 `mock()` 会静默不生效——测试拿到真服务，
       断言却全绿；`swap()` 同理只写了进程级缓存，本执行单元的下次调用仍看到旧实例）
 - ✅ mock 优先于上下文缓存：`unmock()` 之后无需清上下文即回退到容器解析
+- ✅ `setContainer()` 换容器即作废当前执行单元的门面缓存（v3.3.0 起与 `FacadeProxy` 同口径；
+      此前上下文侧只换引用不清缓存，换完容器仍会返回旧容器创建的对象）
+- ✅ `isResolved()` 在两条路径上口径一致：登记了 mock 即视为已解析（v3.3.0 起）
 - ✅ 可随时启用或禁用
 
 ```php
@@ -506,6 +518,41 @@ $callable = Closure::fromCallable([$instance, $method]);
 $callable(...$args);
 ```
 
+缓存条目持有实例对象的强引用，因此 `clear()` / `clearAll()` / `setContainer()` / `mock()` /
+`swap()` / `bind()` 都会顺手剪掉该门面的缓存（v3.3.0 起）——否则换过一轮驱动的老服务对象
+会被永久钉住，在常驻 worker 里表现为一块降不下来的内存地板。
+
+### ✅ 转发边界：魔术名与基类同名（v3.3.0）
+
+两道边界都是显式拒绝，不再"能调就调"：
+
+```php
+final class Mail extends Facade { protected static function id(): string { return 'mailer'; } }
+
+Mail::__construct('admin');        // FacadeException::CODE_MAGIC_METHOD —— 不进服务的构造函数
+Mail::call('__clone', []);        // 同上，__destruct / __serialize 等一并拦下
+```
+
+`Closure::fromCallable([$instance, '__construct'])` 在 PHP 里是合法可调用，放行等于让调用方
+绕过容器的初始化约束、带任意参数重跑服务对象构造并改写其内部状态。`__` 前缀是 PHP 的保留命名，
+门面只转发业务方法。
+
+第二条边界是**基类同名遮蔽**：PHP 恒定优先调用已声明的方法，`__callStatic` 只在名字不可访问时才触发，
+所以 `clear()` / `call()` / `hasMethod()` 这类基类公共静态名**永远走不到服务**。这不是 bug（语言规则），
+但必须说清：
+
+```php
+// 服务 CacheManager 自己也有 clear()
+Cache::clear();              // 清的是门面实例缓存，不是缓存池
+Cache::hasMethod('clear');   // false —— 如实告知静态调用到不了
+Cache::call('clear');        // 这才是缓存池的 clear()
+```
+
+定义门面时请避开基类的公共保留名（`id()` 是 protected，不在此列）：`getInstance` `setContainer`
+`clear` `clearAll` `mock` `unmock` `isMocked` `bind` `unbind` `swap` `isResolved` `getServiceId`
+`call` `hasMethod` `enableContextSafeMode` `disableContextSafeMode` `isContextSafeMode` `resetState`
+`__call` `__callStatic`。
+
 门面是**透明代理**：服务方法自身抛出的业务异常原样向上传播，绝不被包装成 `FacadeException`。
 
 ---
@@ -590,6 +637,8 @@ vendor/kode/facade/
 4. **绑定在启动时完成**：在 `bootstrap.php` 或 `ServiceProvider` 中调用 `FacadeProxy::bind()`
 5. **测试时使用 `clear()`**：避免测试间状态污染
 6. **协程环境启用上下文安全模式**：确保实例隔离
+7. **别给服务方法起名 `clear` / `call` / `swap` 之类基类同名**：PHP 恒优先调用已声明的方法，
+   这类名字经门面走不到服务；只能靠 `Facade::call('name')` 显式转发，`hasMethod('name')` 也会如实报 `false`
 
 ---
 
