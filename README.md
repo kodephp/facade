@@ -17,7 +17,7 @@
 该组件提供：
 
 - ✅ **静态代理** - 实现服务容器绑定的动态调用
-- ✅ **PHP 8.3+ 支持** - 使用类型化类常量等 8.3 新特性，支持枚举、只读类等
+- ✅ **PHP 8.4+ 支持** - 使用类型化类常量等 8.3 新特性，支持枚举、只读类等
 - ✅ **协程安全** - 完全无副作用，不影响协程、多线程、多进程模型
 - ✅ **可调用性缓存** - 用 `Closure::fromCallable()` 直接调用替代反射 `invokeArgs`，调用更快
 - ✅ **原子实例解析** - 上下文模式下用 `Context::getOrSet()` 原子解析，解析失败绝不缓存坏状态
@@ -597,7 +597,7 @@ vendor/kode/facade/
 {
     "name": "kode/facade",
     "type": "library",
-    "description": "适用于 PHP 8.3+ 的健壮、通用门面组件，兼容 Laravel、Symfony、ThinkPHP、Webman 和 KodePHP。",
+    "description": "适用于 PHP 8.4+ 的健壮、通用门面组件，兼容 Laravel、Symfony、ThinkPHP、Webman 和 KodePHP。",
     "keywords": ["facade", "proxy", "static", "container", "psr", "kodephp"],
     "license": "Apache-2.0",
     "authors": [
