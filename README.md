@@ -3,7 +3,7 @@
 > **包名:** `kode/facade`  
 > **版本:** 3.3.0 (稳定版)  
 > **版本来源:** 跟随 Git 标签（如 `v3.3.0`），`composer.json` 不再内嵌 `version` 字段
-> **PHP 版本:** >=8.3  
+> **PHP 版本:** >=8.4  
 > **作者:** KodePHP Team  
 > **许可证:** Apache-2.0  
 > **IDE 支持:** PhpStorm, VS Code
@@ -607,7 +607,7 @@ vendor/kode/facade/
         }
     ],
     "require": {
-        "php": "^8.3",
+        "php": "^8.4",
         "psr/container": "^1.0 || ^2.0",
         "kode/context": "^3.0"
     },
