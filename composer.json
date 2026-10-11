@@ -1,6 +1,6 @@
 {
     "name": "kode/facade",
-    "version": "4.0.0",
+    "version": "4.0.1",
     "type": "library",
     "description": "适用于 PHP 8.4+ 的健壮、通用门面组件，兼容 Laravel、Symfony、ThinkPHP、Webman 和 KodePHP。",
     "keywords": [
@@ -25,6 +25,10 @@
     },
     "require-dev": {
         "phpunit/phpunit": "^10.0"
+    },
+    "support": {
+        "issues": "https://github.com/kodephp/facade/issues",
+        "source": "https://github.com/kodephp/facade"
     },
     "autoload": {
         "psr-4": {
