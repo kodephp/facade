@@ -120,7 +120,7 @@ class FacadeHardeningTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->container = new HardeningContainer();
+        $this->container = new HardeningContainer;
 
         FacadeProxy::reset();
         ContextualFacadeManager::reset();
@@ -151,7 +151,7 @@ class FacadeHardeningTest extends TestCase
      */
     public function testMagicMethodsAreNeverForwarded(): void
     {
-        $this->bind(new MagicService());
+        $this->bind(new MagicService);
 
         foreach (['__construct', '__clone', '__invoke', '__serialize', '__wakeup'] as $magic) {
             $this->assertFalse(HardeningFacade::hasMethod($magic), "hasMethod 不应承认魔术名 {$magic}");
@@ -287,7 +287,7 @@ class FacadeHardeningTest extends TestCase
      */
     public function testHasMethodReflectsForwardingNotJustInstance(): void
     {
-        $this->bind(new ClearableService());
+        $this->bind(new ClearableService);
 
         $this->assertTrue(HardeningFacade::hasMethod('getValue'));
         $this->assertFalse(HardeningFacade::hasMethod('clear'), 'clear 被基类占用，静态调用不会转发到服务');
@@ -299,7 +299,7 @@ class FacadeHardeningTest extends TestCase
      */
     public function testHasMethodHonorsMagicCall(): void
     {
-        $this->bind(new MagicCallService());
+        $this->bind(new MagicCallService);
 
         $this->assertTrue(HardeningFacade::hasMethod('anythingElse'), '服务有 __call 兜底即视为可达');
         $this->assertSame('via-__call:anythingElse', HardeningFacade::anythingElse());

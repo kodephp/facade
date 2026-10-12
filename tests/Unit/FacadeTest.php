@@ -55,7 +55,7 @@ class FacadeTest extends TestCase
      */
     public function testFacadeInstanceResolution(): void
     {
-        $testInstance = new TestService();
+        $testInstance = new TestService;
         $container = $this->createMock(ContainerInterface::class);
 
         $container->expects($this->once())
@@ -82,7 +82,7 @@ class FacadeTest extends TestCase
      */
     public function testFacadeStaticCall(): void
     {
-        $testInstance = new TestService();
+        $testInstance = new TestService;
         $container = $this->createMock(ContainerInterface::class);
 
         $container->expects($this->once())
@@ -108,7 +108,7 @@ class FacadeTest extends TestCase
      */
     public function testFacadeClear(): void
     {
-        $testInstance = new TestService();
+        $testInstance = new TestService;
         $container = $this->createMock(ContainerInterface::class);
 
         $container->expects($this->exactly(2))
@@ -137,7 +137,7 @@ class FacadeTest extends TestCase
      */
     public function testFacadeProxyCachesResolvedInstance(): void
     {
-        $testInstance = new TestService();
+        $testInstance = new TestService;
         $container = $this->createMock(ContainerInterface::class);
 
         $container->expects($this->once())
@@ -164,7 +164,7 @@ class FacadeTest extends TestCase
      */
     public function testHasMethodChecksPublicOnly(): void
     {
-        $testInstance = new TestService();
+        $testInstance = new TestService;
         $container = $this->createMock(ContainerInterface::class);
 
         $container->expects($this->once())
@@ -274,7 +274,7 @@ class FacadeTest extends TestCase
      */
     public function testCallMethod(): void
     {
-        $testInstance = new TestService();
+        $testInstance = new TestService;
         $container = $this->createMock(ContainerInterface::class);
 
         $container->expects($this->once())
@@ -322,7 +322,7 @@ class FacadeTest extends TestCase
      */
     public function testIsResolved(): void
     {
-        $testInstance = new TestService();
+        $testInstance = new TestService;
         $container = $this->createMock(ContainerInterface::class);
 
         $container->method('has')->willReturn(true);
@@ -345,7 +345,7 @@ class FacadeTest extends TestCase
     {
         $this->assertFalse(FacadeProxy::isMocked(TestFacade::class));
 
-        FacadeProxy::mock(TestFacade::class, new \stdClass());
+        FacadeProxy::mock(TestFacade::class, new \stdClass);
 
         $this->assertTrue(FacadeProxy::isMocked(TestFacade::class));
     }
@@ -358,7 +358,7 @@ class FacadeTest extends TestCase
      */
     public function testResolvesViaIdWithoutExplicitBinding(): void
     {
-        $testInstance = new TestService();
+        $testInstance = new TestService;
         $container = $this->createMock(ContainerInterface::class);
 
         $container->method('has')->with('test-service')->willReturn(true);
@@ -379,7 +379,7 @@ class FacadeTest extends TestCase
      */
     public function testSwapReplacesInstance(): void
     {
-        $testInstance = new TestService();
+        $testInstance = new TestService;
         $container = $this->createMock(ContainerInterface::class);
         $container->method('has')->willReturn(true);
         $container->method('get')->willReturn($testInstance);
@@ -419,7 +419,7 @@ class FacadeTest extends TestCase
 
         $this->assertSame('mocked', TestFacade::getValue());
 
-        $testInstance = new TestService();
+        $testInstance = new TestService;
         $container = $this->createMock(ContainerInterface::class);
         $container->method('has')->willReturn(true);
         $container->method('get')->willReturn($testInstance);
@@ -437,7 +437,7 @@ class FacadeTest extends TestCase
      */
     public function testInstanceStyleCall(): void
     {
-        $testInstance = new TestService();
+        $testInstance = new TestService;
         $container = $this->createMock(ContainerInterface::class);
         $container->method('has')->willReturn(true);
         $container->method('get')->willReturn($testInstance);
@@ -445,7 +445,7 @@ class FacadeTest extends TestCase
         TestFacade::setContainer($container);
         FacadeProxy::bind(TestFacade::class, 'test-service');
 
-        $facade = new TestFacade();
+        $facade = new TestFacade;
 
         $this->assertSame('test-value', $facade->getValue());
     }
@@ -505,7 +505,7 @@ class FacadeTest extends TestCase
      */
     public function testInstanceCacheInvalidatedOnRebind(): void
     {
-        $serviceA = new TestService();
+        $serviceA = new TestService;
         $serviceB = new class {
             public function getValue(): string
             {
@@ -566,7 +566,7 @@ class FacadeTest extends TestCase
      */
     public function testFacadeSwapViaFacade(): void
     {
-        $testInstance = new TestService();
+        $testInstance = new TestService;
         $container = $this->createMock(ContainerInterface::class);
         $container->method('has')->willReturn(true);
         $container->method('get')->willReturn($testInstance);
